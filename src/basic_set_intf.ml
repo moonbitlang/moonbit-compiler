@@ -29,6 +29,7 @@ module type S = sig
   val choose : t -> elt
   val mem : t -> elt -> bool
   val add : t -> elt -> t
+  val check_add : t -> duplicate_flag:bool ref -> elt -> t
   val remove : t -> elt -> t
   val union : t -> t -> t
   val inter : t -> t -> t

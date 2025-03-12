@@ -14,10 +14,21 @@
 module Sexp_parser = Dwarfsm_sexp_parser
 module Parse_error = Dwarfsm_sexp_parse_error
 
+let convert_ocaml_lexer (ocaml_lexer : Stdlib.Lexing.lexbuf -> 'token)
+    (ocaml_buf : Stdlib.Lexing.lexbuf) : Lexing.lexbuf -> 'token =
+ fun buf ->
+  let token = ocaml_lexer ocaml_buf in
+  buf.lex_start_p <- Lexing.of_stdlib_position ocaml_buf.lex_start_p;
+  buf.lex_curr_p <- Lexing.of_stdlib_position ocaml_buf.lex_curr_p;
+  token
+
 let parse s =
-  let lexbuf = Lexing.from_string s in
-  try Sexp_parser.sexps Wasm_lex.token lexbuf
+  let lexer =
+    convert_ocaml_lexer Wasm_lex.token (Stdlib.Lexing.from_string s)
+  in
+  let lexbuf = Lexing.from_string "" in
+  try Sexp_parser.sexps lexer lexbuf
   with Sexp_parser.Error ->
     (* must be unmatched right parenthesis *)
-    let pos = (Lexing.lexeme_start_p lexbuf, Lexing.lexeme_end_p lexbuf) in
+    let pos = (lexbuf.Lexing.lex_start_p, lexbuf.Lexing.lex_curr_p) in
     raise (Parse_error.Unmatched_parenthesis pos)

@@ -13,26 +13,26 @@
 *)
 
 module MenhirBasics = struct
-
+  
   exception Error
-
+  
   let _eRR =
     fun _s ->
       raise Error
-
+  
   type token = Sexp_token.token
-
+  
 end
 
 include MenhirBasics
 
 # 1 "lib/dwarfsm/sexp/dwarfsm_sexp_parser.mly"
-
+  
 [@@@ocamlformat "disable"]
 
 # 21 "lib/dwarfsm/sexp/dwarfsm_sexp_parser.ml"
 
-type ('s, 'r) _menhir_state =
+type ('s, 'r) _menhir_state = 
   | MenhirState00 : ('s, _menhir_box_main) _menhir_state
     (** State 00.
         Stack shape : .
@@ -64,19 +64,19 @@ type ('s, 'r) _menhir_state =
         Start symbol: sexps. *)
 
 
-and ('s, 'r) _menhir_cell1_sexp =
+and ('s, 'r) _menhir_cell1_sexp = 
   | MenhirCell1_sexp of 's * ('s, 'r) _menhir_state * (W.t)
 
-and ('s, 'r) _menhir_cell1_sexp_list =
+and ('s, 'r) _menhir_cell1_sexp_list = 
   | MenhirCell1_sexp_list of 's * ('s, 'r) _menhir_state * (W.t list)
 
-and ('s, 'r) _menhir_cell1_LPAREN =
+and ('s, 'r) _menhir_cell1_LPAREN = 
   | MenhirCell1_LPAREN of 's * ('s, 'r) _menhir_state * Lexing.position
 
-and _menhir_box_sexps =
+and _menhir_box_sexps = 
   | MenhirBox_sexps of (W.t list) [@@unboxed]
 
-and _menhir_box_main =
+and _menhir_box_main = 
   | MenhirBox_main of (W.t) [@@unboxed]
 
 let _menhir_action_2 =
@@ -97,7 +97,7 @@ let _menhir_action_3 =
 
 let _menhir_action_4 =
   fun _1 ->
-    let a =
+    let a = 
 # 22 "lib/dwarfsm/sexp/dwarfsm_sexp_parser.mly"
                                       ( _1)
 # 91 "lib/dwarfsm/sexp/dwarfsm_sexp_parser.ml"
@@ -167,9 +167,9 @@ let _menhir_fail : unit -> 'a =
     assert false
 
 include struct
-
+  
   [@@@ocaml.warning "-4-37-39"]
-
+  
   let rec _menhir_run_18 : type  ttv_stack. ttv_stack -> _ -> _ -> _menhir_box_sexps =
     fun _menhir_stack _v _tok ->
       match (_tok : MenhirBasics.token) with
@@ -179,19 +179,19 @@ include struct
           MenhirBox_sexps _v
       | _ ->
           _eRR ()
-
+  
   let rec _menhir_error_run_20 : type  ttv_stack. ttv_stack -> _menhir_box_sexps =
     fun _menhir_stack ->
       _eRR ()
-
+  
   let rec _menhir_error_run_13 : type  ttv_stack. ttv_stack -> _menhir_box_main =
     fun _menhir_stack ->
       _eRR ()
-
+  
   let rec _menhir_error_run_18 : type  ttv_stack. ttv_stack -> _menhir_box_sexps =
     fun _menhir_stack ->
       _eRR ()
-
+  
   let rec _menhir_error_run_10 : type  ttv_stack ttv_result. ((ttv_stack, ttv_result) _menhir_cell1_LPAREN, ttv_result) _menhir_cell1_sexp_list -> _ -> ttv_result =
     fun _menhir_stack _menhir_lexbuf ->
       let _endpos = _menhir_lexbuf.Lexing.lex_curr_p in
@@ -200,7 +200,7 @@ include struct
       let _endpos__3_ = _endpos in
       let _v = _menhir_action_5 _endpos__3_ _startpos__1_ in
       _menhir_error_goto_sexp _menhir_stack _menhir_lexbuf _v _menhir_s
-
+  
   and _menhir_error_goto_sexp : type  ttv_stack ttv_result. ttv_stack -> _ -> _ -> (ttv_stack, ttv_result) _menhir_state -> ttv_result =
     fun _menhir_stack _menhir_lexbuf _v _menhir_s ->
       match _menhir_s with
@@ -216,20 +216,20 @@ include struct
           _menhir_error_run_07 _menhir_stack _menhir_lexbuf _v _menhir_s
       | MenhirState02 ->
           _menhir_error_run_07 _menhir_stack _menhir_lexbuf _v _menhir_s
-
+  
   and _menhir_error_run_07 : type  ttv_stack ttv_result. ttv_stack -> _ -> _ -> (ttv_stack, ttv_result) _menhir_state -> ttv_result =
     fun _menhir_stack _menhir_lexbuf _v _menhir_s ->
       let _menhir_stack = MenhirCell1_sexp (_menhir_stack, _menhir_s, _v) in
       let _v_0 = _menhir_action_6 () in
       _menhir_error_run_08 _menhir_stack _menhir_lexbuf _v_0
-
+  
   and _menhir_error_run_08 : type  ttv_stack ttv_result. (ttv_stack, ttv_result) _menhir_cell1_sexp -> _ -> _ -> ttv_result =
     fun _menhir_stack _menhir_lexbuf _v ->
       let MenhirCell1_sexp (_menhir_stack, _menhir_s, s) = _menhir_stack in
       let l = _v in
       let _v = _menhir_action_7 l s in
       _menhir_error_goto_sexp_list _menhir_stack _menhir_lexbuf _v _menhir_s
-
+  
   and _menhir_error_goto_sexp_list : type  ttv_stack ttv_result. ttv_stack -> _ -> _ -> (ttv_stack, ttv_result) _menhir_state -> ttv_result =
     fun _menhir_stack _menhir_lexbuf _v _menhir_s ->
       match _menhir_s with
@@ -245,24 +245,24 @@ include struct
           _menhir_error_run_04 _menhir_stack _menhir_lexbuf _v _menhir_s
       | _ ->
           _menhir_fail ()
-
+  
   and _menhir_error_run_21 : type  ttv_stack. (ttv_stack, _menhir_box_sexps) _menhir_cell1_sexp -> _ -> _ -> _menhir_box_sexps =
     fun _menhir_stack _menhir_lexbuf _v ->
       let MenhirCell1_sexp (_menhir_stack, _menhir_s, s) = _menhir_stack in
       let l = _v in
       let _v = _menhir_action_7 l s in
       _menhir_error_goto_sexp_list _menhir_stack _menhir_lexbuf _v _menhir_s
-
+  
   and _menhir_error_run_09 : type  ttv_stack ttv_result. ((ttv_stack, ttv_result) _menhir_cell1_LPAREN as 'stack) -> _ -> _ -> ('stack, ttv_result) _menhir_state -> ttv_result =
     fun _menhir_stack _menhir_lexbuf _v _menhir_s ->
       let _menhir_stack = MenhirCell1_sexp_list (_menhir_stack, _menhir_s, _v) in
       _menhir_error_run_10 _menhir_stack _menhir_lexbuf
-
+  
   and _menhir_error_run_04 : type  ttv_stack ttv_result. ((ttv_stack, ttv_result) _menhir_cell1_LPAREN as 'stack) -> _ -> _ -> ('stack, ttv_result) _menhir_state -> ttv_result =
     fun _menhir_stack _menhir_lexbuf _v _menhir_s ->
       let _menhir_stack = MenhirCell1_sexp_list (_menhir_stack, _menhir_s, _v) in
       _menhir_error_run_05 _menhir_stack _menhir_lexbuf
-
+  
   and _menhir_error_run_05 : type  ttv_stack ttv_result. ((ttv_stack, ttv_result) _menhir_cell1_LPAREN, ttv_result) _menhir_cell1_sexp_list -> _ -> ttv_result =
     fun _menhir_stack _menhir_lexbuf ->
       let _endpos = _menhir_lexbuf.Lexing.lex_curr_p in
@@ -271,7 +271,7 @@ include struct
       let _endpos__3_ = _endpos in
       let _v = _menhir_action_5 _endpos__3_ _startpos__1_ in
       _menhir_error_goto_sexp _menhir_stack _menhir_lexbuf _v _menhir_s
-
+  
   let rec _menhir_run_13 : type  ttv_stack. ttv_stack -> _ -> _ -> _menhir_box_main =
     fun _menhir_stack _v _tok ->
       match (_tok : MenhirBasics.token) with
@@ -281,7 +281,7 @@ include struct
           MenhirBox_main _v
       | _ ->
           _eRR ()
-
+  
   let rec _menhir_run_01 : type  ttv_stack ttv_result. ttv_stack -> _ -> _ -> (ttv_stack, ttv_result) _menhir_state -> ttv_result =
     fun _menhir_stack _menhir_lexbuf _menhir_lexer _menhir_s ->
       let _startpos = _menhir_lexbuf.Lexing.lex_start_p in
@@ -298,7 +298,7 @@ include struct
       | _ ->
           let _v = _menhir_action_6 () in
           _menhir_error_run_09 _menhir_stack _menhir_lexbuf _v MenhirState01
-
+  
   and _menhir_run_02 : type  ttv_stack ttv_result. ttv_stack -> _ -> _ -> (ttv_stack, ttv_result) _menhir_state -> ttv_result =
     fun _menhir_stack _menhir_lexbuf _menhir_lexer _menhir_s ->
       let _startpos = _menhir_lexbuf.Lexing.lex_start_p in
@@ -315,14 +315,14 @@ include struct
       | _ ->
           let _v = _menhir_action_6 () in
           _menhir_error_run_04 _menhir_stack _menhir_lexbuf _v MenhirState02
-
+  
   and _menhir_run_03 : type  ttv_stack ttv_result. ttv_stack -> _ -> _ -> _ -> (ttv_stack, ttv_result) _menhir_state -> ttv_result =
     fun _menhir_stack _menhir_lexbuf _menhir_lexer _v _menhir_s ->
       let _tok = _menhir_lexer _menhir_lexbuf in
       let _1 = _v in
       let _v = _menhir_action_4 _1 in
       _menhir_goto_sexp _menhir_stack _menhir_lexbuf _menhir_lexer _v _menhir_s _tok
-
+  
   and _menhir_goto_sexp : type  ttv_stack ttv_result. ttv_stack -> _ -> _ -> _ -> (ttv_stack, ttv_result) _menhir_state -> _ -> ttv_result =
     fun _menhir_stack _menhir_lexbuf _menhir_lexer _v _menhir_s _tok ->
       match _menhir_s with
@@ -338,7 +338,7 @@ include struct
           _menhir_run_07 _menhir_stack _menhir_lexbuf _menhir_lexer _v _menhir_s _tok
       | MenhirState02 ->
           _menhir_run_07 _menhir_stack _menhir_lexbuf _menhir_lexer _v _menhir_s _tok
-
+  
   and _menhir_run_20 : type  ttv_stack. ttv_stack -> _ -> _ -> _ -> (ttv_stack, _menhir_box_sexps) _menhir_state -> _ -> _menhir_box_sexps =
     fun _menhir_stack _menhir_lexbuf _menhir_lexer _v _menhir_s _tok ->
       let _menhir_stack = MenhirCell1_sexp (_menhir_stack, _menhir_s, _v) in
@@ -352,21 +352,21 @@ include struct
           _menhir_run_21 _menhir_stack _menhir_lexbuf _menhir_lexer _v_1 _tok
       | _ ->
           _eRR ()
-
+  
   and _menhir_run_12 : type  ttv_stack ttv_result. ttv_stack -> _ -> _ -> _ -> (ttv_stack, ttv_result) _menhir_state -> ttv_result =
     fun _menhir_stack _menhir_lexbuf _menhir_lexer _v _menhir_s ->
       let _tok = _menhir_lexer _menhir_lexbuf in
       let _1 = _v in
       let _v = _menhir_action_4 _1 in
       _menhir_goto_sexp _menhir_stack _menhir_lexbuf _menhir_lexer _v _menhir_s _tok
-
+  
   and _menhir_run_21 : type  ttv_stack. (ttv_stack, _menhir_box_sexps) _menhir_cell1_sexp -> _ -> _ -> _ -> _ -> _menhir_box_sexps =
     fun _menhir_stack _menhir_lexbuf _menhir_lexer _v _tok ->
       let MenhirCell1_sexp (_menhir_stack, _menhir_s, s) = _menhir_stack in
       let l = _v in
       let _v = _menhir_action_7 l s in
       _menhir_goto_sexp_list _menhir_stack _menhir_lexbuf _menhir_lexer _v _menhir_s _tok
-
+  
   and _menhir_goto_sexp_list : type  ttv_stack ttv_result. ttv_stack -> _ -> _ -> _ -> (ttv_stack, ttv_result) _menhir_state -> _ -> ttv_result =
     fun _menhir_stack _menhir_lexbuf _menhir_lexer _v _menhir_s _tok ->
       match _menhir_s with
@@ -382,7 +382,7 @@ include struct
           _menhir_run_04 _menhir_stack _menhir_lexbuf _menhir_lexer _v _menhir_s _tok
       | _ ->
           _menhir_fail ()
-
+  
   and _menhir_run_09 : type  ttv_stack ttv_result. ((ttv_stack, ttv_result) _menhir_cell1_LPAREN as 'stack) -> _ -> _ -> _ -> ('stack, ttv_result) _menhir_state -> _ -> ttv_result =
     fun _menhir_stack _menhir_lexbuf _menhir_lexer _v _menhir_s _tok ->
       match (_tok : MenhirBasics.token) with
@@ -395,14 +395,14 @@ include struct
       | _ ->
           let _menhir_stack = MenhirCell1_sexp_list (_menhir_stack, _menhir_s, _v) in
           _menhir_error_run_10 _menhir_stack _menhir_lexbuf
-
+  
   and _menhir_run_08 : type  ttv_stack ttv_result. (ttv_stack, ttv_result) _menhir_cell1_sexp -> _ -> _ -> _ -> _ -> ttv_result =
     fun _menhir_stack _menhir_lexbuf _menhir_lexer _v _tok ->
       let MenhirCell1_sexp (_menhir_stack, _menhir_s, s) = _menhir_stack in
       let l = _v in
       let _v = _menhir_action_7 l s in
       _menhir_goto_sexp_list _menhir_stack _menhir_lexbuf _menhir_lexer _v _menhir_s _tok
-
+  
   and _menhir_run_04 : type  ttv_stack ttv_result. ((ttv_stack, ttv_result) _menhir_cell1_LPAREN as 'stack) -> _ -> _ -> _ -> ('stack, ttv_result) _menhir_state -> _ -> ttv_result =
     fun _menhir_stack _menhir_lexbuf _menhir_lexer _v _menhir_s _tok ->
       match (_tok : MenhirBasics.token) with
@@ -415,7 +415,7 @@ include struct
       | _ ->
           let _menhir_stack = MenhirCell1_sexp_list (_menhir_stack, _menhir_s, _v) in
           _menhir_error_run_05 _menhir_stack _menhir_lexbuf
-
+  
   and _menhir_run_07 : type  ttv_stack ttv_result. ttv_stack -> _ -> _ -> _ -> (ttv_stack, ttv_result) _menhir_state -> _ -> ttv_result =
     fun _menhir_stack _menhir_lexbuf _menhir_lexer _v _menhir_s _tok ->
       let _menhir_stack = MenhirCell1_sexp (_menhir_stack, _menhir_s, _v) in
@@ -430,7 +430,7 @@ include struct
       | _ ->
           let _v_2 = _menhir_action_6 () in
           _menhir_error_run_08 _menhir_stack _menhir_lexbuf _v_2
-
+  
   let rec _menhir_run_00 : type  ttv_stack. ttv_stack -> _ -> _ -> _menhir_box_main =
     fun _menhir_stack _menhir_lexbuf _menhir_lexer ->
       let _menhir_s = MenhirState00 in
@@ -442,7 +442,7 @@ include struct
           _menhir_run_12 _menhir_stack _menhir_lexbuf _menhir_lexer _v _menhir_s
       | _ ->
           _eRR ()
-
+  
   let rec _menhir_run_16 : type  ttv_stack. ttv_stack -> _ -> _ -> _menhir_box_sexps =
     fun _menhir_stack _menhir_lexbuf _menhir_lexer ->
       let _tok = _menhir_lexer _menhir_lexbuf in
@@ -456,7 +456,7 @@ include struct
           _menhir_run_18 _menhir_stack _v _tok
       | _ ->
           _eRR ()
-
+  
 end
 
 let sexps =

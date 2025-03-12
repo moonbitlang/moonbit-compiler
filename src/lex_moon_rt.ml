@@ -32,15 +32,16 @@ let from_int_vec (a : Basic_vec_int.t) =
   let len = Basic_vec_int.length a in
   empty_lexbuf ~buf:a.arr ~len
 
-let __private__next_int lexbuf : int =
-  if lexbuf.pos = lexbuf.len then -1
-  else
-    let ret = lexbuf.buf.!(lexbuf.pos) in
-    lexbuf.pos <- lexbuf.pos + 1;
-    ret
+let __private__next_int lexbuf =
+  (if lexbuf.pos = lexbuf.len then -1
+   else
+     let ret = lexbuf.buf.!(lexbuf.pos) in
+     lexbuf.pos <- lexbuf.pos + 1;
+     ret
+    : int)
 
-let peek_next_int lexbuf : int =
-  if lexbuf.pos = lexbuf.len then -1 else lexbuf.buf.!(lexbuf.pos)
+let peek_next_int lexbuf =
+  (if lexbuf.pos = lexbuf.len then -1 else lexbuf.buf.!(lexbuf.pos) : int)
 
 let mark lexbuf i =
   lexbuf.marked_pos <- lexbuf.pos;

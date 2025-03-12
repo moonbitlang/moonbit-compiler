@@ -50,28 +50,30 @@ include struct
   let _ = fun (_ : key) -> ()
 
   let equal_key =
-    (fun a__001_ b__002_ ->
-       if Stdlib.( == ) a__001_ b__002_ then true
-       else
-         Stdlib.( && )
-           (Type_path.equal a__001_.trait b__002_.trait)
-           (Stdlib.( && )
-              (Type_path.equal a__001_.self_type b__002_.self_type)
-              (Stdlib.( = ) (a__001_.method_name : string) b__002_.method_name))
+    (fun a__001_ ->
+       fun b__002_ ->
+        if Stdlib.( == ) a__001_ b__002_ then true
+        else
+          Stdlib.( && )
+            (Type_path.equal a__001_.trait b__002_.trait)
+            (Stdlib.( && )
+               (Type_path.equal a__001_.self_type b__002_.self_type)
+               (Stdlib.( = ) (a__001_.method_name : string) b__002_.method_name))
       : key -> key -> bool)
 
   let _ = equal_key
 
   let (hash_fold_key : Ppx_base.state -> key -> Ppx_base.state) =
-   fun hsv arg ->
-    let hsv =
-      let hsv =
-        let hsv = hsv in
-        Type_path.hash_fold_t hsv arg.trait
-      in
-      Type_path.hash_fold_t hsv arg.self_type
-    in
-    Ppx_base.hash_fold_string hsv arg.method_name
+   fun hsv ->
+    fun arg ->
+     let hsv =
+       let hsv =
+         let hsv = hsv in
+         Type_path.hash_fold_t hsv arg.trait
+       in
+       Type_path.hash_fold_t hsv arg.self_type
+     in
+     Ppx_base.hash_fold_string hsv arg.method_name
 
   let _ = hash_fold_key
 
@@ -90,7 +92,8 @@ include struct
            trait = trait__004_;
            self_type = self_type__006_;
            method_name = method_name__008_;
-         } ->
+         }
+     ->
        let bnds__003_ = ([] : _ Stdlib.List.t) in
        let bnds__003_ =
          let arg__009_ = Moon_sexp_conv.sexp_of_string method_name__008_ in
@@ -112,18 +115,19 @@ include struct
   let _ = sexp_of_key
 
   let compare_key =
-    (fun a__010_ b__011_ ->
-       if Stdlib.( == ) a__010_ b__011_ then 0
-       else
-         match Type_path.compare a__010_.trait b__011_.trait with
-         | 0 -> (
-             match Type_path.compare a__010_.self_type b__011_.self_type with
-             | 0 ->
-                 Stdlib.compare
-                   (a__010_.method_name : string)
-                   b__011_.method_name
-             | n -> n)
-         | n -> n
+    (fun a__010_ ->
+       fun b__011_ ->
+        if Stdlib.( == ) a__010_ b__011_ then 0
+        else
+          match Type_path.compare a__010_.trait b__011_.trait with
+          | 0 -> (
+              match Type_path.compare a__010_.self_type b__011_.self_type with
+              | 0 ->
+                  Stdlib.compare
+                    (a__010_.method_name : string)
+                    b__011_.method_name
+              | n -> n)
+          | n -> n
       : key -> key -> int)
 
   let _ = compare_key
@@ -178,8 +182,8 @@ end
 let empty () = H.create 17
 
 let find_method (env : t) ~(trait : trait) ~(self_type : type_name)
-    ~(method_name : method_name) : method_info option =
-  H.find_opt env { trait; self_type; method_name }
+    ~(method_name : method_name) =
+  (H.find_opt env { trait; self_type; method_name } : method_info option)
 
 let add_method (env : t) ~(trait : Type_path.t) ~(self_type : Type_path.t)
     ~(method_name : string) (meth : method_info) =

@@ -41,9 +41,9 @@ type convert_context = {
 }
 
 let free_vars ctx ~exclude fn =
-  let fvs = Core_util.free_vars ~exclude fn |> Map.bindings in
+  let fvs = Map.bindings (Core_util.free_vars ~exclude fn) in
   let dedup_map = Ident.Hash.create 17 in
-  Lst.iter fvs (fun ((id, _ty) as v) ->
+  Lst.iter fvs ~f:(fun ((id, _ty) as v) ->
       let id, ty = Ident.Map.find_default ctx.convert_info id v in
       if not (Ident.Hash.mem dedup_map id || Ident.Set.mem exclude id) then
         Ident.Hash.add dedup_map id ty);
@@ -66,13 +66,14 @@ let convert_fn (ctx : lifter_context) (fn : Core.fn)
     match captures with
     | Single (cap_id, _) -> Ident.Map.add ctx.rename_table cap_id env_binder
     | Multiple captures ->
-        Lst.fold_left captures ctx.rename_table (fun acc (cap_id, _) ->
-            let new_cap_id = Ident.rename cap_id in
-            Ident.Map.add acc cap_id new_cap_id)
+        Lst.fold_left captures ctx.rename_table (fun acc ->
+            fun (cap_id, _) ->
+             let new_cap_id = Ident.rename cap_id in
+             Ident.Map.add acc cap_id new_cap_id)
   in
   let new_convert_info =
-    Lst.fold_left self_binders ctx.convert_info (fun acc self_binder ->
-        Ident.Map.add acc self_binder (env_binder, env_ty))
+    Lst.fold_left self_binders ctx.convert_info (fun acc ->
+        fun self_binder -> Ident.Map.add acc self_binder (env_binder, env_ty))
   in
   let new_ctx =
     {
@@ -86,15 +87,18 @@ let convert_fn (ctx : lifter_context) (fn : Core.fn)
     match captures with
     | Single _ -> body
     | Multiple captures ->
-        Lst.fold_left_with_offset captures body 0 (fun (cap_id, cap_ty) acc i ->
-            let pos =
-              Parsing_syntax.Index { tuple_index = i; loc_ = Rloc.no_location }
-            in
-            let rhs = Core.field ~ty:cap_ty ~pos:i env_var pos in
-            let new_cap_id = Ident.Map.find_exn new_rename_table cap_id in
-            Core.let_ new_cap_id rhs acc)
+        Lst.fold_left_with_offset captures body 0 (fun (cap_id, cap_ty) ->
+            fun acc ->
+             fun i ->
+              let pos =
+                Parsing_syntax.Index
+                  { tuple_index = i; loc_ = Rloc.no_location }
+              in
+              let rhs = Core.field ~ty:cap_ty ~pos:i env_var pos in
+              let new_cap_id = Ident.Map.find_exn new_rename_table cap_id in
+              Core.let_ new_cap_id rhs acc)
   in
-  ({ params = env :: fn.params; body } : Core.fn)
+  ({ params = env :: fn.params; body; is_async = fn.is_async } : Core.fn)
 
 let add_subtop (ctx : lifter_context) binder fn
     ~(convert_ctx : convert_context option)
@@ -130,8 +134,8 @@ let add_subtop (ctx : lifter_context) binder fn
 let add_subtops ctx bindings ~(convert_ctx : convert_context option)
     ~(visit_expr : lifter_context -> Core.expr -> Core.expr) =
   let new_exclude =
-    Lst.fold_left bindings ctx.exclude (fun acc (binder, _) ->
-        Ident.Set.add acc binder)
+    Lst.fold_left bindings ctx.exclude (fun acc ->
+        fun (binder, _) -> Ident.Set.add acc binder)
   in
   let visit_fn ctx fn =
     match convert_ctx with
@@ -142,20 +146,21 @@ let add_subtops ctx bindings ~(convert_ctx : convert_context option)
   match ctx.lift_to_top with
   | Subtop ->
       let new_ctx = { ctx with exclude = new_exclude } in
-      Lst.iter bindings (fun (binder, fn) ->
+      Lst.iter bindings ~f:(fun (binder, fn) ->
           let fn = visit_fn new_ctx fn in
           Vec.push new_ctx.subtops { binder; fn });
       new_ctx
   | Toplevel { name_hint } ->
       let new_rename_table =
-        Lst.fold_left bindings ctx.rename_table (fun acc (binder, _) ->
-            let new_binder = Ident.make_global_binder ~name_hint binder in
-            Ident.Map.add acc binder new_binder)
+        Lst.fold_left bindings ctx.rename_table (fun acc ->
+            fun (binder, _) ->
+             let new_binder = Ident.make_global_binder ~name_hint binder in
+             Ident.Map.add acc binder new_binder)
       in
       let new_ctx =
         { ctx with rename_table = new_rename_table; exclude = new_exclude }
       in
-      Lst.iter bindings (fun (binder, fn) ->
+      Lst.iter bindings ~f:(fun (binder, fn) ->
           let new_binder = Ident.Map.find_exn new_rename_table binder in
           let fn = visit_fn new_ctx fn in
           let subtop : Core.subtop_fun_decl = { binder = new_binder; fn } in
@@ -188,8 +193,8 @@ let lift_well_known (ctx : lifter_context) ~(kind : Core.letfn_kind)
         | fns -> add_subtops ctx fns ~convert_ctx:(Some convert_ctx) ~visit_expr
       in
       let new_convert_info =
-        Lst.fold_left binders new_ctx.convert_info (fun acc binder ->
-            Ident.Map.add acc binder (renamed_capture, capture_ty))
+        Lst.fold_left binders new_ctx.convert_info (fun acc ->
+            fun binder -> Ident.Map.add acc binder (renamed_capture, capture_ty))
       in
       let new_ctx_with_convert_info =
         { new_ctx with convert_info = new_convert_info }
@@ -207,7 +212,6 @@ let lift_well_known (ctx : lifter_context) ~(kind : Core.letfn_kind)
             type_constructor = Type_path.tuple captures_len;
             tys = Lst.map captures snd;
             generic_ = false;
-            only_tag_enum_ = false;
             is_suberror_ = false;
           }
       in
@@ -227,8 +231,8 @@ let lift_well_known (ctx : lifter_context) ~(kind : Core.letfn_kind)
       in
       let tuple_binder = Ident.fresh "*env" in
       let new_convert_info =
-        Lst.fold_left binders new_ctx.convert_info (fun acc binder ->
-            Ident.Map.add acc binder (tuple_binder, tuple_ty))
+        Lst.fold_left binders new_ctx.convert_info (fun acc ->
+            fun binder -> Ident.Map.add acc binder (tuple_binder, tuple_ty))
       in
       let new_ctx_with_convert_info =
         { new_ctx with convert_info = new_convert_info }
@@ -242,7 +246,7 @@ let lifter =
 
     method! visit_Cexpr_let ctx binder rhs body ty loc =
       match (binder, rhs) with
-      | Pident _, Cexpr_function { func; _ } ->
+      | Pident _, Cexpr_function { func; is_raw_ = false; _ } ->
           let freevars = free_vars ctx ~exclude:ctx.exclude func in
           if freevars = [] then
             let new_ctx =
@@ -280,14 +284,15 @@ let lifter =
 
     method! visit_Cexpr_letrec ctx bindings body ty loc =
       let exclude =
-        Lst.fold_left bindings ctx.exclude (fun acc (binder, _) ->
-            Ident.Set.add acc binder)
+        Lst.fold_left bindings ctx.exclude (fun acc ->
+            fun (binder, _) -> Ident.Set.add acc binder)
       in
       let free_vars, _ =
-        Lst.fold_right bindings ([], exclude) (fun (_, fn) (acc, exclude) ->
-            let new_free_vars = free_vars ctx ~exclude fn in
-            ( new_free_vars @ acc,
-              Ident.Set.add_list exclude (Lst.map new_free_vars fst) ))
+        Lst.fold_right bindings ([], exclude) (fun (_, fn) ->
+            fun (acc, exclude) ->
+             let new_free_vars = free_vars ctx ~exclude fn in
+             ( new_free_vars @ acc,
+               Ident.Set.add_list exclude (Lst.map new_free_vars fst) ))
       in
       if free_vars = [] then
         let new_ctx =
@@ -307,7 +312,7 @@ let lifter =
     method! visit_Cexpr_apply ctx func args kind ty ty_args_ prim loc =
       match kind with
       | Join -> super#visit_Cexpr_apply ctx func args kind ty ty_args_ prim loc
-      | Normal _ ->
+      | Normal _ | Async _ ->
           let new_func = Ident.Map.find_default ctx.rename_table func func in
           let args = Lst.map args (self#visit_expr ctx) in
           let new_args =
@@ -330,34 +335,34 @@ let non_well_known_collector =
       Ident.Hashset.add ctx id
   end
 
-let lift_expr ~lift_to_top (expr : Core.expr) :
-    Core.expr * Core.subtop_fun_decl Vec.t =
-  let non_well_knowns = Ident.Hashset.create 17 in
-  non_well_known_collector#visit_expr non_well_knowns expr;
-  let ctx =
-    {
-      lift_to_top;
-      subtops = Vec.empty ();
-      rename_table = Ident.Map.empty;
-      exclude = Ident.Set.empty;
-      non_well_knowns;
-      convert_info = Ident.Map.empty;
-    }
-  in
-  let expr = lifter#visit_expr ctx expr in
-  (expr, ctx.subtops)
+let lift_expr ~lift_to_top (expr : Core.expr) =
+  (let non_well_knowns = Ident.Hashset.create 17 in
+   non_well_known_collector#visit_expr non_well_knowns expr;
+   let ctx =
+     {
+       lift_to_top;
+       subtops = Vec.empty ();
+       rename_table = Ident.Map.empty;
+       exclude = Ident.Set.empty;
+       non_well_knowns;
+       convert_info = Ident.Map.empty;
+     }
+   in
+   let expr = lifter#visit_expr ctx expr in
+   (expr, ctx.subtops)
+    : Core.expr * Core.subtop_fun_decl Vec.t)
 
-let subtop_to_top ({ binder; fn } : Core.subtop_fun_decl) ~loc_ : Core.top_item
-    =
-  Ctop_fn
-    {
-      binder;
-      func = fn;
-      subtops = [];
-      ty_params_ = Tvar_env.empty;
-      is_pub_ = false;
-      loc_;
-    }
+let subtop_to_top ({ binder; fn } : Core.subtop_fun_decl) ~loc_ =
+  (Ctop_fn
+     {
+       binder;
+       func = fn;
+       subtops = [];
+       ty_params_ = Tvar_env.empty;
+       is_pub_ = false;
+       loc_;
+     }
+    : Core.top_item)
 
 let lift_item (acc : Core.top_item Vec.t) (item : Core.top_item) =
   match item with
@@ -408,5 +413,5 @@ let lift_item (acc : Core.top_item Vec.t) (item : Core.top_item) =
 
 let lift_program (prog : Core.program) =
   let acc = Vec.empty () in
-  Lst.iter prog (fun item -> lift_item acc item);
+  Lst.iter prog ~f:(fun item -> lift_item acc item);
   Vec.to_list acc

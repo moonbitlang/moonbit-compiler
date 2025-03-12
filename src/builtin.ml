@@ -15,75 +15,77 @@
 
 module B = Stype.Type_path.Builtin
 module Type_path = Basic_type_path
+module Constr_info = Basic_constr_info
 
-let f desc t : Stype.t =
-  T_constr
-    {
-      type_constructor = desc;
-      tys = [ t ];
-      generic_ = false;
-      only_tag_enum_ = false;
-      is_suberror_ = false;
-    }
+let f desc t =
+  (T_constr
+     {
+       type_constructor = desc;
+       tys = [ t ];
+       generic_ = false;
+       is_suberror_ = false;
+     }
+    : Stype.t)
 
 let type_array = f B.type_path_array
 let type_fixedarray = f B.type_path_fixedarray
 let type_maybe_uninit = f B.type_path_maybe_uninit
 
-let type_arrow t1 t2 ~err_ty : Stype.t =
-  Tarrow { params_ty = t1; ret_ty = t2; generic_ = false; err_ty }
+let type_arrow t1 t2 ~err_ty ~is_async =
+  (Tarrow { params_ty = t1; ret_ty = t2; generic_ = false; err_ty; is_async }
+    : Stype.t)
 
-let type_product ts : Stype.t =
-  T_constr
-    {
-      type_constructor = Type_path.tuple (List.length ts);
-      tys = ts;
-      generic_ = false;
-      only_tag_enum_ = false;
-      is_suberror_ = false;
-    }
+let type_product ts =
+  (T_constr
+     {
+       type_constructor = Type_path.tuple (List.length ts);
+       tys = ts;
+       generic_ = false;
+       is_suberror_ = false;
+     }
+    : Stype.t)
 
-let type_ref ty : Stype.t =
-  T_constr
-    {
-      type_constructor = B.type_path_ref;
-      tys = [ ty ];
-      generic_ = false;
-      only_tag_enum_ = false;
-      is_suberror_ = false;
-    }
+let type_ref ty =
+  (T_constr
+     {
+       type_constructor = B.type_path_ref;
+       tys = [ ty ];
+       generic_ = false;
+       is_suberror_ = false;
+     }
+    : Stype.t)
 
-let type_option ty : Stype.t =
-  T_constr
-    {
-      type_constructor = B.type_path_option;
-      tys = [ ty ];
-      generic_ = false;
-      only_tag_enum_ = false;
-      is_suberror_ = false;
-    }
+let type_option ty =
+  (T_constr
+     {
+       type_constructor = B.type_path_option;
+       tys = [ ty ];
+       generic_ = false;
+       is_suberror_ = false;
+     }
+    : Stype.t)
 
-let type_map key value : Stype.t =
-  T_constr
-    {
-      type_constructor = B.type_path_map;
-      tys = [ key; value ];
-      generic_ = false;
-      only_tag_enum_ = false;
-      is_suberror_ = false;
-    }
+let type_map key value =
+  (T_constr
+     {
+       type_constructor = B.type_path_map;
+       tys = [ key; value ];
+       generic_ = false;
+       is_suberror_ = false;
+     }
+    : Stype.t)
 
-let type_iter ty : Stype.t = f B.type_path_iter ty
+let type_iter ty = (f B.type_path_iter ty : Stype.t)
 
-let type_iter2 key value : Stype.t =
-  T_constr
-    {
-      type_constructor = B.type_path_iter2;
-      tys = [ key; value ];
-      generic_ = false;
-      only_tag_enum_ = false;
-      is_suberror_ = false;
-    }
+let type_iter2 key value =
+  (T_constr
+     {
+       type_constructor = B.type_path_iter2;
+       tys = [ key; value ];
+       generic_ = false;
+       is_suberror_ = false;
+     }
+    : Stype.t)
 
 let tvar_env_1 = Tvar_env.tvar_env_1
 let generic_var = Stype.param0
@@ -98,13 +100,17 @@ let constr_none : Typedecl_info.constructor =
           type_constructor = B.type_path_option;
           tys = [ arg ];
           generic_ = true;
-          only_tag_enum_ = false;
           is_suberror_ = false;
         };
     cs_args = [];
     cs_tag =
       Constr_tag_regular
-        { total = 2; index = 0; name_ = "None"; is_constant_ = true };
+        {
+          total = Constr_info.Index_set.singleton 0 1;
+          index = 0;
+          name_ = "None";
+          repr_ = Constant;
+        };
     cs_vis = Read_write;
     cs_ty_params_ = tvar_env_1;
     cs_arity_ = Fn_arity.simple 0;
@@ -122,13 +128,17 @@ let constr_some : Typedecl_info.constructor =
           type_constructor = B.type_path_option;
           tys = [ arg ];
           generic_ = true;
-          only_tag_enum_ = false;
           is_suberror_ = false;
         };
     cs_args = [ arg ];
     cs_tag =
       Constr_tag_regular
-        { total = 2; index = 1; name_ = "Some"; is_constant_ = false };
+        {
+          total = Constr_info.Index_set.singleton 0 1;
+          index = 1;
+          name_ = "Some";
+          repr_ = Non_constant;
+        };
     cs_vis = Read_write;
     cs_ty_params_ = tvar_env_1;
     cs_arity_ = Fn_arity.simple 1;
@@ -148,7 +158,6 @@ let field_val : Typedecl_info.field =
           type_constructor = B.type_path_ref;
           tys = [ arg ];
           generic_ = true;
-          only_tag_enum_ = false;
           is_suberror_ = false;
         };
     mut = true;
@@ -175,12 +184,16 @@ let constr_ok : Typedecl_info.constructor =
           type_constructor = B.type_path_result;
           tys = [ ty_ok; ty_err ];
           generic_ = true;
-          only_tag_enum_ = false;
           is_suberror_ = false;
         };
     cs_tag =
       Constr_tag_regular
-        { total = 2; index = 1; name_ = "Ok"; is_constant_ = false };
+        {
+          total = Constr_info.Index_set.singleton 0 1;
+          index = 1;
+          name_ = "Ok";
+          repr_ = Non_constant;
+        };
     cs_vis = Read_write;
     cs_ty_params_ = tvar_env_2;
     cs_arity_ = Fn_arity.simple 1;
@@ -200,12 +213,16 @@ let constr_err : Typedecl_info.constructor =
           type_constructor = B.type_path_result;
           tys = [ ty_ok; ty_err ];
           generic_ = true;
-          only_tag_enum_ = false;
           is_suberror_ = false;
         };
     cs_tag =
       Constr_tag_regular
-        { total = 2; index = 0; name_ = "Err"; is_constant_ = false };
+        {
+          total = Constr_info.Index_set.singleton 0 1;
+          index = 0;
+          name_ = "Err";
+          repr_ = Non_constant;
+        };
     cs_vis = Read_write;
     cs_ty_params_ = tvar_env_2;
     cs_arity_ = Fn_arity.simple 1;
@@ -219,31 +236,35 @@ type local_typedecl_info = {
   ty_desc : Typedecl_info.type_components;
 }
 
-let f_poly1 (t : local_typedecl_info) : Typedecl_info.t =
-  {
-    ty_constr = t.ty_constr;
-    ty_arity = t.ty_arity;
-    ty_desc = t.ty_desc;
-    ty_vis = Vis_fully_pub;
-    ty_params_ = tvar_env_1;
-    ty_loc_ = Loc.no_location;
-    ty_doc_ = Docstring.empty;
-    ty_is_only_tag_enum_ = false;
-    ty_is_suberror_ = false;
-  }
+let f_poly1 (t : local_typedecl_info) =
+  ({
+     ty_constr = t.ty_constr;
+     ty_arity = t.ty_arity;
+     ty_desc = t.ty_desc;
+     ty_vis = Vis_fully_pub;
+     ty_params_ = tvar_env_1;
+     ty_loc_ = Loc.no_location;
+     ty_doc_ = Docstring.empty;
+     ty_attrs = [];
+     ty_is_only_tag_enum_ = false;
+     ty_is_suberror_ = false;
+   }
+    : Typedecl_info.t)
 
-let f_poly2 (t : local_typedecl_info) : Typedecl_info.t =
-  {
-    ty_constr = t.ty_constr;
-    ty_arity = t.ty_arity;
-    ty_desc = t.ty_desc;
-    ty_vis = Vis_fully_pub;
-    ty_params_ = tvar_env_2;
-    ty_loc_ = Loc.no_location;
-    ty_doc_ = Docstring.empty;
-    ty_is_only_tag_enum_ = false;
-    ty_is_suberror_ = false;
-  }
+let f_poly2 (t : local_typedecl_info) =
+  ({
+     ty_constr = t.ty_constr;
+     ty_arity = t.ty_arity;
+     ty_desc = t.ty_desc;
+     ty_vis = Vis_fully_pub;
+     ty_params_ = tvar_env_2;
+     ty_loc_ = Loc.no_location;
+     ty_doc_ = Docstring.empty;
+     ty_attrs = [];
+     ty_is_only_tag_enum_ = false;
+     ty_is_suberror_ = false;
+   }
+    : Typedecl_info.t)
 
 let ty_constr_option : Typedecl_info.t =
   f_poly1
@@ -287,6 +308,21 @@ let ty_constr_error : Typedecl_info.t =
     ty_params_ = tvar_env_1;
     ty_loc_ = Loc.no_location;
     ty_doc_ = Docstring.empty;
+    ty_attrs = [];
+    ty_is_only_tag_enum_ = false;
+    ty_is_suberror_ = false;
+  }
+
+let ty_constr_func_ref : Typedecl_info.t =
+  {
+    ty_constr = B.type_path_func_ref;
+    ty_arity = 1;
+    ty_desc = Abstract_type;
+    ty_vis = Vis_fully_pub;
+    ty_params_ = tvar_env_1;
+    ty_loc_ = Loc.no_location;
+    ty_doc_ = Docstring.empty;
+    ty_attrs = [];
     ty_is_only_tag_enum_ = false;
     ty_is_suberror_ = false;
   }
@@ -294,20 +330,22 @@ let ty_constr_error : Typedecl_info.t =
 let builtin_types = Typing_info.make_types ()
 
 let _ =
-  [
-    ty_constr_option;
-    ty_constr_fixedarray;
-    ty_constr_ref;
-    ty_constr_result;
-    ty_constr_error;
-  ]
-  |> List.iter (fun (t : Typedecl_info.t) ->
-         Typing_info.add_type builtin_types (Type_path_util.name t.ty_constr) t)
+  Basic_lst.iter
+    ~f:(fun (t : Typedecl_info.t) ->
+      Typing_info.add_type builtin_types (Type_path_util.name t.ty_constr) t)
+    [
+      ty_constr_option;
+      ty_constr_fixedarray;
+      ty_constr_ref;
+      ty_constr_result;
+      ty_constr_error;
+      ty_constr_func_ref;
+    ]
 
 let builtin_values : Typing_info.values = Typing_info.make_values ()
 
 let _ =
-  List.iter
-    (Typing_info.add_constructor builtin_values)
-    [ constr_none; constr_some; constr_err; constr_ok ];
+  Basic_lst.iter
+    [ constr_none; constr_some; constr_err; constr_ok ]
+    ~f:(Typing_info.add_constructor builtin_values);
   Typing_info.add_field builtin_values ~field:field_val

@@ -14,9 +14,9 @@
 
 
 module Itype = Dwarfsm_itype
+module Lst = Basic_lst
 module Ast = Dwarfsm_ast
 
-type var = Dwarfsm_ast.var
 type binder = Dwarfsm_ast.binder
 type heaptype = Dwarfsm_ast.heaptype
 type storagetype = Dwarfsm_ast.storagetype
@@ -38,8 +38,6 @@ type expr = Dwarfsm_ast.expr
 type modulefield = Dwarfsm_ast.modulefield
 type importdesc = Dwarfsm_ast.importdesc
 type module_ = Dwarfsm_ast.module_
-type modulefield_new = Dwarfsm_ast.modulefield_new
-type module_new = Dwarfsm_ast.module_new
 
 exception Parse_failure of { input : W.t; syntax : string }
 exception Unclosed_structured_instr of { instr : string }
@@ -54,11 +52,12 @@ let () =
                syntax;
                " with input ";
                W.to_string input;
-             ])
+             ] [@merlin.hide])
     | Unclosed_structured_instr { instr } ->
         Some
-          ("Dwarfsm parse failure: unclosed structured instruction " ^ instr
+          (("Dwarfsm parse failure: unclosed structured instruction " ^ instr
             : Stdlib.String.t)
+            [@merlin.hide])
     | _ -> None)
 
 let is_id x = String.starts_with ~prefix:"$" x
@@ -156,11 +155,57 @@ let binder : W.t list -> binder * W.t list = function
   | W.Atom x :: v when is_id x -> ({ id = Some x; index = -1 }, v)
   | v -> ({ id = None; index = -1 }, v)
 
-let index v : var =
-  match v with
-  | W.Atom x when is_id x -> { var_name = Some x; index = -1 }
-  | W.Atom x when is_nat x -> { var_name = None; index = int_of_string x }
-  | w -> raise (Parse_failure { input = w; syntax = "index" })
+let label : W.t list -> Ast.label * W.t list = function
+  | W.Atom x :: v when is_id x -> (Some x, v)
+  | v -> (None, v)
+
+let fieldidx v =
+  (let var : Ast.var =
+     match v with
+     | W.Atom x when is_id x -> Unresolve x
+     | W.Atom x when is_nat x ->
+         Resolved { var_name = ""; index = int_of_string x }
+     | w -> raise (Parse_failure { input = w; syntax = "fieldidx" })
+   in
+   { var }
+    : Ast.fieldidx)
+
+let var v =
+  (match v with
+   | W.Atom x when is_id x -> Unresolve x
+   | w -> raise (Parse_failure { input = w; syntax = "var" })
+    : Ast.var)
+
+let memidx v = ({ var = var v } : Ast.memidx)
+let dataidx v = ({ var = var v } : Ast.dataidx)
+let tableidx v = ({ var = var v } : Ast.tableidx)
+let funcidx v = ({ var = var v } : Ast.funcidx)
+let typeidx v = ({ var = var v } : Ast.typeidx)
+let globalidx v = ({ var = var v } : Ast.globalidx)
+
+let localidx v =
+  (let var : Ast.var =
+     match v with
+     | W.Atom x when is_id x -> Unresolve x
+     | W.Atom x when is_nat x ->
+         Resolved { var_name = ""; index = int_of_string x }
+     | w -> raise (Parse_failure { input = w; syntax = "localidx" })
+   in
+   { var }
+    : Ast.localidx)
+
+let labelidx v =
+  (let var : Ast.var =
+     match v with
+     | W.Atom x when is_id x -> Unresolve x
+     | W.Atom x when is_nat x ->
+         Resolved { var_name = ""; index = int_of_string x }
+     | w -> raise (Parse_failure { input = w; syntax = "localidx" })
+   in
+   { var }
+    : Ast.labelidx)
+
+let tagidx v = ({ var = var v } : Ast.tagidx)
 
 let heaptype : W.t -> heaptype = function
   | (Atom "any" : W.t) -> Absheaptype Any
@@ -173,7 +218,7 @@ let heaptype : W.t -> heaptype = function
   | (Atom "nofunc" : W.t) -> Absheaptype NoFunc
   | (Atom "extern" : W.t) -> Absheaptype Extern
   | (Atom "noextern" : W.t) -> Absheaptype NoExtern
-  | w -> Type (index w)
+  | w -> Type (typeidx w)
 
 let storagetype : W.t -> storagetype = function
   | (Atom "i8" : W.t) -> Packedtype I8
@@ -196,7 +241,6 @@ let storagetype : W.t -> storagetype = function
       Valtype (Reftype (Ref (Nullable, Absheaptype None)))
   | (Atom "funcref" : W.t) ->
       Valtype (Reftype (Ref (Nullable, Absheaptype Func)))
-  | (Atom "func" : W.t) -> Valtype (Reftype (Ref (NonNull, Absheaptype Func)))
   | (Atom "nullfuncref" : W.t) ->
       Valtype (Reftype (Ref (Nullable, Absheaptype NoFunc)))
   | (Atom "externref" : W.t) ->
@@ -220,7 +264,6 @@ let valtype : W.t -> valtype = function
   | (Atom "arrayref" : W.t) -> Reftype (Ref (Nullable, Absheaptype Array))
   | (Atom "nullref" : W.t) -> Reftype (Ref (Nullable, Absheaptype None))
   | (Atom "funcref" : W.t) -> Reftype (Ref (Nullable, Absheaptype Func))
-  | (Atom "func" : W.t) -> Reftype (Ref (NonNull, Absheaptype Func))
   | (Atom "nullfuncref" : W.t) -> Reftype (Ref (Nullable, Absheaptype NoFunc))
   | (Atom "externref" : W.t) -> Reftype (Ref (Nullable, Absheaptype Extern))
   | (Atom "nullexternref" : W.t) ->
@@ -236,15 +279,14 @@ let reftype : W.t -> reftype = function
   | (Atom "arrayref" : W.t) -> Ref (Nullable, Absheaptype Array)
   | (Atom "nullref" : W.t) -> Ref (Nullable, Absheaptype None)
   | (Atom "funcref" : W.t) -> Ref (Nullable, Absheaptype Func)
-  | (Atom "func" : W.t) -> Ref (NonNull, Absheaptype Func)
   | (Atom "nullfuncref" : W.t) -> Ref (Nullable, Absheaptype NoFunc)
   | (Atom "externref" : W.t) -> Ref (Nullable, Absheaptype Extern)
   | (Atom "nullexternref" : W.t) -> Ref (Nullable, Absheaptype NoExtern)
   | w -> raise (Parse_failure { input = w; syntax = "reftype" })
 
-let mut p : W.t -> Ast.mut * 'a = function
-  | (List [ Atom "mut"; w ] : W.t) -> (Var, p w)
-  | w -> (Const, p w)
+let mut p =
+  (function (List [ Atom "mut"; w ] : W.t) -> (Var, p w) | w -> (Const, p w)
+    : W.t -> Ast.mut * 'a)
 
 let source_name_opt = function
   | (List [ Atom "source_name"; w ] : W.t) :: v -> (Some (string w), v)
@@ -257,6 +299,8 @@ let source_type_inner : W.t -> Itype.t = function
   | (Atom "bool" : W.t) -> Bool
   | (Atom "unit" : W.t) -> Unit
   | (Atom "byte" : W.t) -> Byte
+  | (Atom "int16" : W.t) -> Int16
+  | (Atom "uint16" : W.t) -> UInt16
   | (Atom "int64" : W.t) -> Int64
   | (Atom "uint64" : W.t) -> UInt64
   | (Atom "float" : W.t) -> Float
@@ -292,10 +336,11 @@ let field : W.t -> field =
   match w with
   | (List [ Atom "field"; name; ty ] : W.t) -> (
       match name with
-      | Atom x when is_id x -> ({ id = Some x; index = -1 }, fieldtype ty)
+      | Atom x when is_id x ->
+          { id = { id = Some x; index = -1 }; fieldtype = fieldtype ty }
       | _ -> fail ())
   | (List [ Atom "field"; ty ] : W.t) ->
-      ({ id = None; index = -1 }, fieldtype ty)
+      { id = { id = None; index = -1 }; fieldtype = fieldtype ty }
   | _ -> fail ()
 
 let rec params : W.t list -> param list * W.t list =
@@ -326,7 +371,7 @@ let rec params : W.t list -> param list * W.t list =
                 go (param :: tail) v
             | [] -> tail
           in
-          (go tail v, v3))
+          (go tail (List.rev v), v3))
   | v -> ([], v)
 
 let result : W.t -> valtype =
@@ -340,10 +385,10 @@ let result : W.t -> valtype =
 
 let comptype : W.t -> comptype = function
   | (List [ Atom "array"; w ] : W.t) -> Arraytype (Array (fieldtype w))
-  | (List (Atom "struct" :: v) : W.t) -> Structtype (Struct (List.map field v))
+  | (List (Atom "struct" :: v) : W.t) -> Structtype (Struct (Lst.map v field))
   | (List (Atom "func" :: v) : W.t) ->
       let params, v = params v in
-      let results = List.map result v in
+      let results = Lst.map v result in
       Functype (Func (params, results))
   | w -> raise (Parse_failure { input = w; syntax = "comptype" })
 
@@ -353,7 +398,7 @@ let rec subtype : W.t -> subtype =
   match w with
   | (List (Atom "sub" :: v) : W.t) ->
       let final, v = final v in
-      let super, v = repeat index v in
+      let super, v = repeat typeidx v in
       let w = assert_list_singleton v fail in
       { final; super; type_ = comptype w }
   | w -> { final = true; super = []; type_ = comptype w }
@@ -374,7 +419,7 @@ let typedef : W.t -> binder * subtype =
 
 let typeuse : W.t list -> typeuse * W.t list = function
   | (List [ Atom "type"; w ] : W.t) :: v ->
-      let idx = index w in
+      let idx = typeidx w in
       let params, v = params v in
       let results, v = repeat result v in
       (Use (idx, params, results), v)
@@ -388,6 +433,11 @@ let limits : W.t list -> limits * W.t list = function
       ({ min = u32 w; max = Some (u32 w2) }, v)
   | w :: v when is_nat (symbol w) -> ({ min = u32 w; max = None }, v)
   | v -> raise (Parse_failure { input = W.List v; syntax = "limits" })
+
+let shared : W.t list -> bool * W.t list = function
+  | (Atom "shared" : W.t) :: v -> (true, v)
+  | (Atom "unshared" : W.t) :: v -> (false, v)
+  | v -> (false, v)
 
 let local : W.t -> local =
  fun w ->
@@ -408,41 +458,69 @@ let offset_opt : W.t list -> int32 option * W.t list = function
       (Some (Int32.of_string ("0u" ^ lit)), v)
   | v -> (None, v)
 
+let int32_log2 (i : int32) =
+  (match i with
+   | 1l -> 0l
+   | 2l -> 1l
+   | 4l -> 2l
+   | 8l -> 3l
+   | 16l -> 4l
+   | 32l -> 5l
+   | 64l -> 6l
+   | 128l -> 7l
+   | 256l -> 8l
+   | 512l -> 9l
+   | 1024l -> 10l
+   | 2048l -> 11l
+   | 4096l -> 12l
+   | _ -> assert false
+    : int32)
+
 let align_opt : W.t list -> int32 option * W.t list = function
   | Atom s :: v when String.starts_with ~prefix:"align=" s ->
       let lit = String.sub s 6 (String.length s - 6) in
-      (Some (Int32.of_string ("0u" ^ lit)), v)
+      (Some (int32_log2 (Int32.of_string ("0u" ^ lit))), v)
   | v -> (None, v)
 
 let memarg : W.t list -> memarg * W.t list =
  fun v ->
   let offset, v = offset_opt v in
   let align, v = align_opt v in
-  let offset = offset |> Option.value ~default:0l in
-  let align = align |> Option.value ~default:0l in
+  let offset = Option.value ~default:0l offset in
+  let align = Option.value ~default:0l align in
   ({ offset; align }, v)
+
+let memarg_n : int32 -> W.t list -> memarg * W.t list =
+ fun n ->
+  fun v ->
+   let offset, v = offset_opt v in
+   let align, v = align_opt v in
+   let offset = Option.value ~default:0l offset in
+   let align = Option.value ~default:n align in
+   ({ offset; align }, v)
 
 let rec plaininstr : W.t list -> instr * W.t list = function
   | (Atom "any.convert_extern" : W.t) :: v -> (Any_convert_extern, v)
   | (Atom "array.copy" : W.t) :: (w : W.t) :: (w2 : W.t) :: v ->
-      (Array_copy (index w, index w2), v)
-  | (Atom "array.fill" : W.t) :: (w : W.t) :: v -> (Array_fill (index w), v)
-  | (Atom "array.get" : W.t) :: (w : W.t) :: v -> (Array_get (index w), v)
-  | (Atom "array.get_u" : W.t) :: (w : W.t) :: v -> (Array_get_u (index w), v)
+      (Array_copy (typeidx w, typeidx w2), v)
+  | (Atom "array.fill" : W.t) :: (w : W.t) :: v -> (Array_fill (typeidx w), v)
+  | (Atom "array.get" : W.t) :: (w : W.t) :: v -> (Array_get (typeidx w), v)
+  | (Atom "array.get_s" : W.t) :: (w : W.t) :: v -> (Array_get_s (typeidx w), v)
+  | (Atom "array.get_u" : W.t) :: (w : W.t) :: v -> (Array_get_u (typeidx w), v)
   | (Atom "array.len" : W.t) :: v -> (Array_len, v)
-  | (Atom "array.new" : W.t) :: (w : W.t) :: v -> (Array_new (index w), v)
+  | (Atom "array.new" : W.t) :: (w : W.t) :: v -> (Array_new (typeidx w), v)
   | (Atom "array.new_data" : W.t) :: (w : W.t) :: (w2 : W.t) :: v ->
-      (Array_new_data (index w, index w2), v)
+      (Array_new_data (typeidx w, dataidx w2), v)
   | (Atom "array.new_fixed" : W.t) :: (w : W.t) :: (w2 : W.t) :: v ->
-      (Array_new_fixed (index w, u32 w2), v)
+      (Array_new_fixed (typeidx w, u32 w2), v)
   | (Atom "array.new_default" : W.t) :: (w : W.t) :: v ->
-      (Array_new_default (index w), v)
-  | (Atom "array.set" : W.t) :: (w : W.t) :: v -> (Array_set (index w), v)
+      (Array_new_default (typeidx w), v)
+  | (Atom "array.set" : W.t) :: (w : W.t) :: v -> (Array_set (typeidx w), v)
   | (Atom "block" : W.t) :: v ->
-      let label, v = binder v in
+      let label, v = label v in
       let type_, v = typeuse v in
       let (instrs, v), end_ =
-        instrlist ?label:label.id ~allow_else:false ~allow_end:true v
+        instrlist ?label ~allow_else:false ~allow_end:true v
       in
       let () =
         match end_ with
@@ -450,21 +528,21 @@ let rec plaininstr : W.t list -> instr * W.t list = function
         | `End -> ()
         | `Nil -> raise (Unclosed_structured_instr { instr = "block" })
       in
-      (Block (label, type_, instrs), v)
-  | (Atom "br" : W.t) :: (w : W.t) :: v -> (Br (index w), v)
-  | (Atom "br_if" : W.t) :: (w : W.t) :: v -> (Br_if (index w), v)
+      (Block { label; typeuse = type_; instrs }, v)
+  | (Atom "br" : W.t) :: (w : W.t) :: v -> (Br (labelidx w), v)
+  | (Atom "br_if" : W.t) :: (w : W.t) :: v -> (Br_if (labelidx w), v)
   | (Atom "br_table" : W.t) :: v ->
-      let labels, v = repeat index v in
+      let labels, v = repeat labelidx v in
       let labels, last_label = Basic_lst.split_at_last labels in
       (Br_table (labels, last_label), v)
-  | (Atom "call" : W.t) :: (w : W.t) :: v -> (Call (index w), v)
+  | (Atom "call" : W.t) :: (w : W.t) :: v -> (Call (funcidx w), v)
   | (Atom "call_indirect" : W.t) :: (w : W.t) :: v when is_symbol w ->
       let type_, v = typeuse v in
-      (Call_indirect (index w, type_), v)
+      (Call_indirect (tableidx w, type_), v)
   | (Atom "call_indirect" : W.t) :: v ->
       let type_, v = typeuse v in
-      (Call_indirect ({ var_name = None; index = 0 }, type_), v)
-  | (Atom "call_ref" : W.t) :: (w : W.t) :: v -> (Call_ref (index w), v)
+      (Call_indirect ({ var = Unresolve Ast.default_table_name }, type_), v)
+  | (Atom "call_ref" : W.t) :: (w : W.t) :: v -> (Call_ref (typeidx w), v)
   | (Atom "drop" : W.t) :: v -> (Drop, v)
   | (Atom "extern.convert_any" : W.t) :: v -> (Extern_convert_any, v)
   | (Atom "f64.add" : W.t) :: v -> (F64_add, v)
@@ -534,8 +612,8 @@ let rec plaininstr : W.t list -> instr * W.t list = function
   | (Atom "i32.trunc_f32_u" : W.t) :: v -> (I32_trunc_f32_u, v)
   | (Atom "i64.trunc_f32_s" : W.t) :: v -> (I64_trunc_f32_s, v)
   | (Atom "i64.trunc_f32_u" : W.t) :: v -> (I64_trunc_f32_u, v)
-  | (Atom "global.get" : W.t) :: (w : W.t) :: v -> (Global_get (index w), v)
-  | (Atom "global.set" : W.t) :: (w : W.t) :: v -> (Global_set (index w), v)
+  | (Atom "global.get" : W.t) :: (w : W.t) :: v -> (Global_get (globalidx w), v)
+  | (Atom "global.set" : W.t) :: (w : W.t) :: v -> (Global_set (globalidx w), v)
   | (Atom "i32.add" : W.t) :: v -> (I32_add, v)
   | (Atom "i32.and" : W.t) :: v -> (I32_and, v)
   | (Atom "i32.clz" : W.t) :: v -> (I32_clz, v)
@@ -598,6 +676,33 @@ let rec plaininstr : W.t list -> instr * W.t list = function
   | (Atom "i32.trunc_sat_f32_u" : W.t) :: v -> (I32_trunc_sat_f32_u, v)
   | (Atom "i32.trunc_sat_f64_s" : W.t) :: v -> (I32_trunc_sat_f64_s, v)
   | (Atom "i32.trunc_sat_f64_u" : W.t) :: v -> (I32_trunc_sat_f64_u, v)
+  | (Atom "i32.atomic.load" : W.t) :: v ->
+      let memarg, v = memarg_n 2l v in
+      (I32_atomic_load memarg, v)
+  | (Atom "i32.atomic.load8_u" : W.t) :: v ->
+      let memarg, v = memarg_n 0l v in
+      (I32_atomic_load8_u memarg, v)
+  | (Atom "i32.atomic.load16_u" : W.t) :: v ->
+      let memarg, v = memarg_n 1l v in
+      (I32_atomic_load16_u memarg, v)
+  | (Atom "i32.atomic.store" : W.t) :: v ->
+      let memarg, v = memarg_n 2l v in
+      (I32_atomic_store memarg, v)
+  | (Atom "i32.atomic.store8" : W.t) :: v ->
+      let memarg, v = memarg_n 0l v in
+      (I32_atomic_store8 memarg, v)
+  | (Atom "i32.atomic.store16" : W.t) :: v ->
+      let memarg, v = memarg_n 1l v in
+      (I32_atomic_store16 memarg, v)
+  | (Atom "i32.atomic.rmw.cmpxchg" : W.t) :: v ->
+      let memarg, v = memarg_n 2l v in
+      (I32_atomic_rmw_cmpxchg memarg, v)
+  | (Atom "i32.atomic.rmw8.cmpxchg_u" : W.t) :: v ->
+      let memarg, v = memarg_n 0l v in
+      (I32_atomic_rmw8_cmpxchg_u memarg, v)
+  | (Atom "i32.atomic.rmw16.cmpxchg_u" : W.t) :: v ->
+      let memarg, v = memarg_n 1l v in
+      (I32_atomic_rmw16_cmpxchg_u memarg, v)
   | (Atom "i64.add" : W.t) :: v -> (I64_add, v)
   | (Atom "i64.and" : W.t) :: v -> (I64_and, v)
   | (Atom "i64.clz" : W.t) :: v -> (I64_clz, v)
@@ -681,15 +786,15 @@ let rec plaininstr : W.t list -> instr * W.t list = function
   | (Atom "f32x4.add" : W.t) :: v -> (F32x4_add, v)
   | (Atom "f32x4.mul" : W.t) :: v -> (F32x4_mul, v)
   | (Atom "if" : W.t) :: v -> (
-      let label, v = binder v in
+      let label, v = label v in
       let type_, v = typeuse v in
       let (instrs, v), (end_ : [ `Else | `End | `Nil ]) =
-        instrlist ?label:label.id ~allow_else:true ~allow_end:true v
+        instrlist ?label ~allow_else:true ~allow_end:true v
       in
       match end_ with
       | `Else ->
           let (instrs2, v), end_ =
-            instrlist ?label:label.id ~allow_else:false ~allow_end:true v
+            instrlist ?label ~allow_else:false ~allow_end:true v
           in
           let () =
             match end_ with
@@ -697,17 +802,17 @@ let rec plaininstr : W.t list -> instr * W.t list = function
             | `End -> ()
             | `Nil -> raise (Unclosed_structured_instr { instr = "if" })
           in
-          (If (label, type_, instrs, instrs2), v)
-      | `End -> (If (label, type_, instrs, []), v)
+          (If { label; typeuse = type_; then_ = instrs; else_ = instrs2 }, v)
+      | `End -> (If { label; typeuse = type_; then_ = instrs; else_ = [] }, v)
       | `Nil -> raise (Unclosed_structured_instr { instr = "if" }))
-  | (Atom "local.get" : W.t) :: (w : W.t) :: v -> (Local_get (index w), v)
-  | (Atom "local.set" : W.t) :: (w : W.t) :: v -> (Local_set (index w), v)
-  | (Atom "local.tee" : W.t) :: (w : W.t) :: v -> (Local_tee (index w), v)
+  | (Atom "local.get" : W.t) :: (w : W.t) :: v -> (Local_get (localidx w), v)
+  | (Atom "local.set" : W.t) :: (w : W.t) :: v -> (Local_set (localidx w), v)
+  | (Atom "local.tee" : W.t) :: (w : W.t) :: v -> (Local_tee (localidx w), v)
   | (Atom "loop" : W.t) :: v ->
-      let label, v = binder v in
+      let label, v = label v in
       let type_, v = typeuse v in
       let (instrs, v), _end =
-        instrlist ?label:label.id ~allow_else:false ~allow_end:true v
+        instrlist ?label ~allow_else:false ~allow_end:true v
       in
       let () =
         match _end with
@@ -715,29 +820,35 @@ let rec plaininstr : W.t list -> instr * W.t list = function
         | `End -> ()
         | `Nil -> raise (Unclosed_structured_instr { instr = "loop" })
       in
-      (Loop (label, type_, instrs), v)
-  | (Atom "memory.init" : W.t) :: (w : W.t) :: v -> (Memory_init (index w), v)
+      (Loop { label; typeuse = type_; instrs }, v)
+  | (Atom "memory.init" : W.t) :: (w : W.t) :: v -> (Memory_init (dataidx w), v)
   | (Atom "memory.copy" : W.t) :: v -> (Memory_copy, v)
   | (Atom "memory.grow" : W.t) :: v -> (Memory_grow, v)
   | (Atom "memory.size" : W.t) :: v -> (Memory_size, v)
   | (Atom "memory.fill" : W.t) :: v -> (Memory_fill, v)
+  | (Atom "memory.atomic.wait32" : W.t) :: v ->
+      let memarg, v = memarg_n 2l v in
+      (Memory_atomic_wait32 memarg, v)
+  | (Atom "memory.atomic.notify" : W.t) :: v ->
+      let memarg, v = memarg_n 2l v in
+      (Memory_atomic_notify memarg, v)
   | (Atom "ref.eq" : W.t) :: v -> (Ref_eq, v)
   | (Atom "ref.as_non_null" : W.t) :: v -> (Ref_as_non_null, v)
   | (Atom "ref.cast" : W.t) :: (w : W.t) :: v -> (Ref_cast (reftype w), v)
-  | (Atom "ref.func" : W.t) :: (w : W.t) :: v -> (Ref_func (index w), v)
+  | (Atom "ref.func" : W.t) :: (w : W.t) :: v -> (Ref_func (funcidx w), v)
   | (Atom "ref.is_null" : W.t) :: v -> (Ref_is_null, v)
   | (Atom "ref.null" : W.t) :: (w : W.t) :: v -> (Ref_null (heaptype w), v)
   | (Atom "return" : W.t) :: v -> (Return, v)
   | (Atom "struct.get" : W.t) :: (w : W.t) :: (w2 : W.t) :: v ->
-      (Struct_get (index w, index w2), v)
-  | (Atom "struct.new" : W.t) :: (w : W.t) :: v -> (Struct_new (index w), v)
+      (Struct_get (typeidx w, fieldidx w2), v)
+  | (Atom "struct.new" : W.t) :: (w : W.t) :: v -> (Struct_new (typeidx w), v)
   | (Atom "struct.new_default" : W.t) :: (w : W.t) :: v ->
-      (Struct_new_default (index w), v)
+      (Struct_new_default (typeidx w), v)
   | (Atom "struct.set" : W.t) :: (w : W.t) :: (w2 : W.t) :: v ->
-      (Struct_set (index w, index w2), v)
-  | (Atom "table.get" : W.t) :: (w : W.t) :: v -> (Table_get (index w), v)
+      (Struct_set (typeidx w, fieldidx w2), v)
+  | (Atom "table.get" : W.t) :: (w : W.t) :: v -> (Table_get (tableidx w), v)
   | (Atom "unreachable" : W.t) :: v -> (Unreachable, v)
-  | (Atom "throw" : W.t) :: (w : W.t) :: v -> (Throw (index w), v)
+  | (Atom "throw" : W.t) :: (w : W.t) :: v -> (Throw (tagidx w), v)
   | (Atom "select" : W.t) :: v -> (Select, v)
   | (Atom "nop" : W.t) :: v -> (No_op, v)
   | (Atom "source_pos" : W.t)
@@ -759,45 +870,45 @@ let rec plaininstr : W.t list -> instr * W.t list = function
 
 and foldedinstr : W.t -> instr list = function
   | (List (Atom "block" :: v) : W.t) ->
-      let label, v = binder v in
+      let label, v = label v in
       let type_, v = typeuse v in
       let instrs = expr v in
-      [ Block (label, type_, instrs) ]
+      [ Block { label; typeuse = type_; instrs } ]
   | (List (Atom "loop" :: v) : W.t) ->
-      let label, v = binder v in
+      let label, v = label v in
       let type_, v = typeuse v in
       let instrs = expr v in
-      [ Loop (label, type_, instrs) ]
+      [ Loop { label; typeuse = type_; instrs } ]
   | (List (Atom "if" :: v) : W.t) as w ->
       let fail () = raise (Parse_failure { input = w; syntax = "if" }) in
-      let label, v = binder v in
+      let label, v = label v in
       let type_, v = typeuse v in
       let instrs, v = repeat foldedinstr v in
-      let instrs1, v =
+      let then_, v =
         match v with
         | (List (Atom "then" :: v2) : W.t) :: v -> (expr v2, v)
         | v -> ([], v)
       in
-      let instrs2, v =
+      let else_, v =
         match v with
         | (List (Atom "else" :: v2) : W.t) :: v -> (expr v2, v)
         | v -> ([], v)
       in
       assert_list_empty v fail;
-      List.flatten instrs @ [ If (label, type_, instrs1, instrs2) ]
+      Lst.concat instrs @ [ If { label; typeuse = type_; then_; else_ } ]
   | (List (Atom "try_table" :: v) : W.t) ->
-      let label, v = binder v in
+      let label, v = label v in
       let type_, v = typeuse v in
-      let cs, v = repeat catch v in
-      let es = expr v in
-      [ Try_table (label, type_, cs, es) ]
+      let catchs, v = repeat catch v in
+      let instrs = expr v in
+      [ Try_table { label; typeuse = type_; catchs; instrs } ]
   | (List (w :: v) : W.t) ->
       let instr, v = plaininstr (w :: v) in
       Basic_lst.flat_map_append ~f:foldedinstr v ~init:[ instr ]
   | w -> raise (Parse_failure { input = w; syntax = "foldedinstr" })
 
 and catch : W.t -> catch = function
-  | (List [ Atom "catch"; w1; w2 ] : W.t) -> Catch (index w1, index w2)
+  | (List [ Atom "catch"; w1; w2 ] : W.t) -> Catch (tagidx w1, labelidx w2)
   | w -> raise (Parse_failure { input = w; syntax = "catch" })
 
 and instrlist :
@@ -806,29 +917,35 @@ and instrlist :
     allow_end:bool ->
     W.t list ->
     (instr list * W.t list) * [ `Else | `End | `Nil ] =
- fun ?label ~allow_else ~allow_end v ->
-  let end_ = ref `Nil in
-  let rec aux v acc =
-    match v with
-    | [] ->
-        end_ := `Nil;
-        (acc, [])
-    | (Atom "else" : W.t) :: v when allow_else ->
-        end_ := `Else;
-        (acc, v)
-    | (Atom "end" : W.t) :: v when allow_end ->
-        end_ := `End;
-        let v =
-          match (label, v) with Some l, w :: v when symbol w = l -> v | _ -> v
-        in
-        (acc, v)
-    | ((List _ : W.t) as w) :: v -> aux v (List.rev_append (foldedinstr w) acc)
-    | v ->
-        let instr, v = plaininstr v in
-        aux v (instr :: acc)
-  in
-  let instrs, v = aux v [] in
-  ((List.rev instrs, v), !end_)
+ fun ?label ->
+  fun ~allow_else ->
+   fun ~allow_end ->
+    fun v ->
+     let end_ = ref `Nil in
+     let rec aux v acc =
+       match v with
+       | [] ->
+           end_ := `Nil;
+           (acc, [])
+       | (Atom "else" : W.t) :: v when allow_else ->
+           end_ := `Else;
+           (acc, v)
+       | (Atom "end" : W.t) :: v when allow_end ->
+           end_ := `End;
+           let v =
+             match (label, v) with
+             | Some l, w :: v when symbol w = l -> v
+             | _ -> v
+           in
+           (acc, v)
+       | ((List _ : W.t) as w) :: v ->
+           aux v (List.rev_append (foldedinstr w) acc)
+       | v ->
+           let instr, v = plaininstr v in
+           aux v (instr :: acc)
+     in
+     let instrs, v = aux v [] in
+     ((List.rev instrs, v), !end_)
 
 and expr : W.t list -> instr list =
  fun v ->
@@ -853,7 +970,7 @@ let inline_export_opt : W.t list -> string option * W.t list = function
 let elemexpr : W.t -> expr = function
   | (List (Atom "item" :: v) : W.t) -> expr v
   | Atom _ as w ->
-      let index = index w in
+      let index = funcidx w in
       [ Ref_func index ]
   | w -> foldedinstr w
 
@@ -876,8 +993,9 @@ let importdesc : W.t -> importdesc =
   | (List (Atom "memory" :: v) : W.t) ->
       let id, v = binder v in
       let limits, v = limits v in
+      let shared, v = shared v in
       assert_list_empty v fail;
-      Memory (id, { limits })
+      Memory (id, { limits; shared })
   | (List (Atom "global" :: v) : W.t) ->
       let id, v = binder v in
       let w = assert_list_singleton v fail in
@@ -894,14 +1012,14 @@ let exportdesc : W.t -> Ast.exportdesc =
  fun w ->
   let fail () = raise (Parse_failure { input = w; syntax = "exportdesc" }) in
   match w with
-  | (List [ Atom "func"; w ] : W.t) -> Func (index w)
-  | (List [ Atom "table"; w ] : W.t) -> Table (index w)
-  | (List [ Atom "memory"; w ] : W.t) -> Memory (index w)
-  | (List [ Atom "global"; w ] : W.t) -> Global (index w)
+  | (List [ Atom "func"; w ] : W.t) -> Func (funcidx w)
+  | (List [ Atom "table"; w ] : W.t) -> Table (tableidx w)
+  | (List [ Atom "memory"; w ] : W.t) -> Memory (memidx w)
+  | (List [ Atom "global"; w ] : W.t) -> Global (globalidx w)
   | _ -> fail ()
 
 let modulefield : W.t -> modulefield list = function
-  | (List (Atom "rec" :: v) : W.t) -> [ Rectype (List.map typedef v) ]
+  | (List (Atom "rec" :: v) : W.t) -> [ Rectype (Lst.map v typedef) ]
   | (List (Atom "type" :: _) : W.t) as w -> [ Rectype [ typedef w ] ]
   | (List [ Atom "import"; mod_; name; desc ] : W.t) ->
       let desc = importdesc desc in
@@ -934,12 +1052,11 @@ let modulefield : W.t -> modulefield list = function
         | _ -> fail ()
       in
       match inline_export with
-      | Some name ->
-          r
-          @ [
-              Export
-                { name; desc = Func { var_name = id.id; index = id.index } };
-            ]
+      | Some name -> (
+          match[@warning "-fragile-match"] id.id with
+          | Some var_name ->
+              r @ [ Export { name; desc = Func { var = Unresolve var_name } } ]
+          | _ -> assert false)
       | _ -> r)
   | (List (Atom "table" :: v) : W.t) as w -> (
       let fail () = raise (Parse_failure { input = w; syntax = "table" }) in
@@ -951,22 +1068,24 @@ let modulefield : W.t -> modulefield list = function
       | Some limits, v ->
           let init = expr v in
           [ Table { id; type_ = { limits; element_type }; init } ]
-      | None, (List (Atom "elem" :: v) : W.t) :: [] ->
+      | None, (List (Atom "elem" :: v) : W.t) :: [] -> (
           let n = Int32.of_int (List.length v) in
           let limits : limits = { min = n; max = Some n } in
-          let list = List.map elemexpr v in
-          [
-            Table { id; type_ = { limits; element_type }; init = [] };
-            Elem
-              {
-                id = { id = None; index = -1 };
-                type_ = element_type;
-                mode =
-                  Ast.EMActive
-                    ({ var_name = id.id; index = id.index }, [ I32_const 0l ]);
-                list;
-              };
-          ]
+          let list = Lst.map v elemexpr in
+          match[@warning "-fragile-match"] id.id with
+          | Some name ->
+              [
+                Table { id; type_ = { limits; element_type }; init = [] };
+                Elem
+                  {
+                    id = { id = None; index = -1 };
+                    type_ = element_type;
+                    mode =
+                      Ast.EMActive ({ var = Unresolve name }, [ I32_const 0l ]);
+                    list;
+                  };
+              ]
+          | _ -> assert false)
       | _ -> fail ())
   | (List (Atom "memory" :: v) : W.t) as w ->
       let fail () = raise (Parse_failure { input = w; syntax = "memory" }) in
@@ -974,20 +1093,22 @@ let modulefield : W.t -> modulefield list = function
       let inline_export, v = inline_export_opt v in
       let inline_import, v = inline_import_opt v in
       let limits, v = limits v in
+      let shared, v = shared v in
       assert_list_empty v fail;
       let import : Ast.modulefield =
         match inline_import with
-        | None -> Mem { id; type_ = { limits } }
+        | None -> Mem { id; type_ = { limits; shared } }
         | Some (mod_, name) ->
-            Import { module_ = mod_; name; desc = Memory (id, { limits }) }
+            Import
+              { module_ = mod_; name; desc = Memory (id, { limits; shared }) }
       in
       let export : Ast.modulefield list =
         match inline_export with
-        | Some name ->
-            [
-              Export
-                { name; desc = Memory { var_name = id.id; index = id.index } };
-            ]
+        | Some name -> (
+            match[@warning "-fragile-match"] id.id with
+            | Some var_name ->
+                [ Export { name; desc = Memory { var = Unresolve var_name } } ]
+            | _ -> assert false)
         | _ -> []
       in
       import :: export
@@ -1000,11 +1121,11 @@ let modulefield : W.t -> modulefield list = function
       let mut, type_ = mut valtype w in
       let export : Ast.modulefield list =
         match inline_export with
-        | Some name ->
-            [
-              Export
-                { name; desc = Global { var_name = id.id; index = id.index } };
-            ]
+        | Some name -> (
+            match[@warning "-fragile-match"] id.id with
+            | Some var_name ->
+                [ Export { name; desc = Global { var = Unresolve var_name } } ]
+            | _ -> assert false)
         | _ -> []
       in
       let import : Ast.modulefield =
@@ -1018,20 +1139,24 @@ let modulefield : W.t -> modulefield list = function
       let name = string name in
       let desc = exportdesc desc in
       [ Export { name; desc } ]
-  | (List [ Atom "start"; w ] : W.t) -> [ Start (index w) ]
+  | (List [ Atom "start"; w ] : W.t) -> [ Start (funcidx w) ]
   | (List (Atom "elem" :: v) : W.t) as w ->
       let fail () = raise (Parse_failure { input = w; syntax = "elem" }) in
       let id, v = binder v in
       let mode, v =
         match v with
         | (List [ Atom "table"; w ] : W.t) :: (w2 : W.t) :: v ->
-            (Ast.EMActive (index w, offset w2), v)
+            (Ast.EMActive (tableidx w, offset w2), v)
         | (Atom "declare" : W.t) :: v -> (Ast.EMDeclarative, v)
         | v -> (Ast.EMPassive, v)
       in
       let w, v = assert_list_nonempty v fail in
-      let type_ = reftype w in
-      let list = List.map elemexpr v in
+      let type_ =
+        match w with
+        | (Atom "func" : W.t) -> Ast.Ref (NonNull, Absheaptype Func)
+        | w -> reftype w
+      in
+      let list = Lst.map v elemexpr in
       [ Elem { id; mode; type_; list } ]
   | (List (Atom "data" :: v) : W.t) as w ->
       let fail () = raise (Parse_failure { input = w; syntax = "data" }) in
@@ -1039,9 +1164,10 @@ let modulefield : W.t -> modulefield list = function
       let mode, v =
         match v with
         | (List [ Atom "memory"; w ] : W.t) :: (w2 : W.t) :: v ->
-            (Ast.DMActive (index w, offset w2), v)
+            (Ast.DMActive (memidx w, offset w2), v)
         | (List (Atom "offset" :: v2) : W.t) :: v ->
-            (Ast.DMActive ({ var_name = None; index = 0 }, expr v2), v)
+            ( Ast.DMActive ({ var = Unresolve Ast.default_memory_name }, expr v2),
+              v )
         | v -> (Ast.DMPassive, v)
       in
       let w = assert_list_singleton v fail in
@@ -1061,143 +1187,3 @@ let module_ : W.t list -> module_ = function
       { id; fields = List.concat_map modulefield v }
   | v ->
       { id = { id = None; index = -1 }; fields = List.concat_map modulefield v }
-
-let modulefield_new : W.t -> modulefield_new list = function
-  | (List (Atom "rec" :: v) : W.t) -> [ Rectype (List.map typedef v) ]
-  | (List (Atom "type" :: _) : W.t) as w -> [ Rectype [ typedef w ] ]
-  | (List [ Atom "import"; mod_; name; desc ] : W.t) ->
-      let desc : importdesc =
-        match desc with
-        | (List (Atom "func" :: v) : W.t) ->
-            let id, v = binder v in
-            let type_, [] = typeuse v in
-            Func (id, type_)
-        | (List (Atom "table" :: v) : W.t) ->
-            let id, v = binder v in
-            let limits, w :: [] = limits v in
-            let element_type = reftype w in
-            let type_ : tabletype = { limits; element_type } in
-            Table (id, type_)
-        | (List (Atom "memory" :: v) : W.t) ->
-            let id, v = binder v in
-            let limits, [] = limits v in
-            Memory (id, { limits })
-        | (List (Atom "global" :: v) : W.t) ->
-            let id, w :: [] = binder v in
-            let mut, type_ = mut valtype w in
-            Global (id, { mut; type_ })
-        | (List (Atom "tag" :: v) : W.t) ->
-            let id, v = binder v in
-            let type_, [] = typeuse v in
-            Tag (id, type_)
-      in
-      [ Import { module_ = string mod_; name = string name; desc } ]
-  | (List (Atom "func" :: _) : W.t) as func -> [ (Func func : modulefield_new) ]
-  | (List (Atom "table" :: v) : W.t) -> (
-      let id, v = binder v in
-      let limits, w :: v = vopt limits v in
-      let element_type = reftype w in
-      match (limits, v) with
-      | Some limits, v ->
-          let init = expr v in
-          [ Table { id; type_ = { limits; element_type }; init } ]
-      | None, (List (Atom "elem" :: v) : W.t) :: [] ->
-          let n = Int32.of_int (List.length v) in
-          let limits : limits = { min = n; max = Some n } in
-          let list = List.map elemexpr v in
-          [
-            Table { id; type_ = { limits; element_type }; init = [] };
-            Elem
-              {
-                id = { id = None; index = -1 };
-                type_ = element_type;
-                mode =
-                  Ast.EMActive
-                    ({ var_name = id.id; index = id.index }, [ I32_const 0l ]);
-                list;
-              };
-          ])
-  | (List (Atom "memory" :: v) : W.t) ->
-      let id, v = binder v in
-      let inline_export, v = inline_export_opt v in
-      let inline_import, v = inline_import_opt v in
-      let limits, [] = limits v in
-      let import : modulefield_new =
-        match inline_import with
-        | None -> Mem { id; type_ = { limits } }
-        | Some (mod_, name) ->
-            Import { module_ = mod_; name; desc = Memory (id, { limits }) }
-      in
-      let export : modulefield_new list =
-        match inline_export with
-        | Some name ->
-            [
-              Export
-                { name; desc = Memory { var_name = id.id; index = id.index } };
-            ]
-        | _ -> []
-      in
-      import :: export
-  | (List (Atom "global" :: v) : W.t) -> (
-      let id, v = binder v in
-      let inline_export, w :: v = inline_export_opt v in
-      let mut, type_ = mut valtype w in
-      match inline_export with
-      | Some name ->
-          [
-            Global { id; type_ = { mut; type_ }; init = expr v };
-            Export
-              { name; desc = Global { var_name = id.id; index = id.index } };
-          ]
-      | _ -> [ Global { id; type_ = { mut; type_ }; init = expr v } ])
-  | (List [ Atom "export"; name; desc ] : W.t) ->
-      let name = string name in
-      let desc : Ast.exportdesc =
-        match desc with
-        | (List [ Atom "func"; w ] : W.t) -> Func (index w)
-        | (List [ Atom "table"; w ] : W.t) -> Table (index w)
-        | (List [ Atom "memory"; w ] : W.t) -> Memory (index w)
-        | (List [ Atom "global"; w ] : W.t) -> Global (index w)
-      in
-      [ Export { name; desc } ]
-  | (List [ Atom "start"; w ] : W.t) -> [ Start (index w) ]
-  | (List (Atom "elem" :: v) : W.t) ->
-      let id, v = binder v in
-      let mode, w :: v =
-        match v with
-        | (List [ Atom "table"; w ] : W.t) :: (w2 : W.t) :: v ->
-            (Ast.EMActive (index w, offset w2), v)
-        | (Atom "declare" : W.t) :: v -> (Ast.EMDeclarative, v)
-        | v -> (Ast.EMPassive, v)
-      in
-      let type_ = reftype w in
-      let list = List.map elemexpr v in
-      [ Elem { id; mode; type_; list } ]
-  | (List (Atom "data" :: v) : W.t) ->
-      let id, v = binder v in
-      let mode, w :: [] =
-        match v with
-        | (List [ Atom "memory"; w ] : W.t) :: (w2 : W.t) :: v ->
-            (Ast.DMActive (index w, offset w2), v)
-        | (List (Atom "offset" :: v2) : W.t) :: v ->
-            (Ast.DMActive ({ var_name = None; index = 0 }, expr v2), v)
-        | v -> (Ast.DMPassive, v)
-      in
-      let data_str = string w in
-      [ Data { id; mode; data_str } ]
-  | (List (Atom "tag" :: w :: v) : W.t) ->
-      let type_, [] = typeuse v in
-      let id, _ = binder [ w ] in
-      [ Tag { id; type_ } ]
-[@@warning "-partial-match"] [@@dead "+modulefield_new"]
-
-let module_new : W.t list -> module_new = function
-  | (List (Atom "module" :: v) : W.t) :: [] ->
-      let id, v = binder v in
-      { id; fields = List.concat_map modulefield_new v }
-  | v ->
-      {
-        id = { id = None; index = -1 };
-        fields = List.concat_map modulefield_new v;
-      }
-[@@dead "+module_new"]

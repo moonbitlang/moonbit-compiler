@@ -70,67 +70,73 @@ include struct
   let _ = sexp_of_t
 end
 
-let collect_ref (def : Ltype.def) : Tid_hashset.t =
-  let tid_set = Tid_hashset.create 17 in
-  let go (ltype : Ltype.t) =
-    match ltype with
-    | Ref_lazy_init { tid } | Ref { tid } | Ref_nullable { tid } ->
-        if
-          not
-            (Tid.equal tid Ltype.tid_enum
-            || Tid.equal tid Ltype.tid_bytes
-            || Tid.equal tid Ltype.tid_string)
-        then Tid_hashset.add tid_set tid
-    | I32_Int | I32_Char | I32_Bool | I32_Unit | I32_Byte | I32_Tag
-    | I32_Option_Char | I64 | F32 | F64 | Ref_extern | Ref_string | Ref_bytes
-    | Ref_func | Ref_any ->
-        ()
-  in
-  (match def with
-  | Ref_array { elem } -> go elem
-  | Ref_struct { fields } -> Lst.iter fields (fun (t, _) -> go t)
-  | Ref_late_init_struct { fields } -> Lst.iter fields go
-  | Ref_constructor { args } -> Lst.iter args (fun (t, _) -> go t)
-  | Ref_closure_abstract { fn_sig = { params; ret } } ->
-      Lst.iter params go;
-      Lst.iter ret go
-  | Ref_object { methods } ->
-      Lst.iter methods (fun { params; ret } ->
-          Lst.iter params go;
-          Lst.iter ret go)
-  | Ref_closure { fn_sig_tid = fn_tid; captures } ->
-      Tid_hashset.add tid_set fn_tid;
-      Lst.iter captures go);
-  tid_set
+let collect_ref (def : Ltype.def) =
+  (let tid_set = Tid_hashset.create 17 in
+   let go (ltype : Ltype.t) =
+     match ltype with
+     | Ref_lazy_init { tid } | Ref { tid } | Ref_nullable { tid } ->
+         if
+           not
+             (Tid.equal tid Ltype.tid_enum
+             || Tid.equal tid Ltype.tid_bytes
+             || Tid.equal tid Ltype.tid_string)
+         then Tid_hashset.add tid_set tid
+     | I32 _ | I64 | F32 | F64 | Ref_extern | Ref_string | Ref_bytes | Ref_func
+     | Ref_any ->
+         ()
+   in
+   (match def with
+   | Ref_array { elem } -> go elem
+   | Ref_struct { fields } -> Lst.iter fields ~f:(fun (t, _) -> go t)
+   | Ref_late_init_struct { fields } -> Lst.iter fields ~f:go
+   | Ref_constructor { args } -> Lst.iter args ~f:(fun (t, _) -> go t)
+   | Ref_closure_abstract { fn_sig = { params; ret } } ->
+       Lst.iter params ~f:go;
+       Lst.iter ret ~f:go
+   | Ref_object { methods } ->
+       Lst.iter methods ~f:(fun { params; ret } ->
+           Lst.iter params ~f:go;
+           Lst.iter ret ~f:go)
+   | Ref_concrete_object { abstract_obj_tid; self } ->
+       Tid_hashset.add tid_set abstract_obj_tid;
+       go self
+   | Ref_closure { fn_sig_tid = fn_tid; captures } ->
+       Tid_hashset.add tid_set fn_tid;
+       Lst.iter captures ~f:go);
+   tid_set
+    : Tid_hashset.t)
 
-let group_typedefs (td : Ltype.type_defs) : t =
-  let td_arr = Tid_hash.to_array td in
-  let index_tbl = Tid_hash.create 17 in
-  let self_rec_set = Tid_hashset.create 17 in
-  Array.iteri (fun i (tid, _def) -> Tid_hash.add index_tbl tid i) td_arr;
-  let adjacency_array =
-    Array.init (Array.length td_arr) (fun _ -> VI.empty ())
-  in
-  let add_edge (def : Tid.t) (ref_ : Tid.t) =
-    let def_index = Tid_hash.find_exn index_tbl def in
-    let ref_index = Tid_hash.find_exn index_tbl ref_ in
-    VI.push adjacency_array.(def_index) ref_index
-  in
-  Array.iter
-    (fun (tid, def) ->
-      let ref_set = collect_ref def in
-      if Tid_hashset.mem ref_set tid then Tid_hashset.add self_rec_set tid;
-      Tid_hashset.iter ref_set (fun ref_ -> add_edge tid ref_))
-    td_arr;
-  let scc = Basic_scc.graph adjacency_array in
-  let res =
-    Vec.map_into_list scc (fun component ->
-        if VI.length component = 1 then
-          let tid_index = VI.get component 0 in
-          let tid, def = td_arr.(tid_index) in
-          if Tid_hashset.mem self_rec_set tid then Rec [ (tid, def) ]
-          else Nonrec (tid, def)
-        else
-          Rec (VI.map_into_list component (fun tid_index -> td_arr.(tid_index))))
-  in
-  res
+let group_typedefs (td : Ltype.type_defs) =
+  (let td_arr = Tid_hash.to_array td in
+   let index_tbl = Tid_hash.create 17 in
+   let self_rec_set = Tid_hashset.create 17 in
+   Array.iteri (fun i -> fun (tid, _def) -> Tid_hash.add index_tbl tid i) td_arr;
+   let adjacency_array =
+     Array.init (Array.length td_arr) (fun _ -> VI.empty ())
+   in
+   let add_edge (def : Tid.t) (ref_ : Tid.t) =
+     let def_index = Tid_hash.find_exn index_tbl def in
+     let ref_index = Tid_hash.find_exn index_tbl ref_ in
+     VI.push adjacency_array.(def_index) ref_index
+   in
+   Array.iter
+     (fun (tid, def) ->
+       let ref_set = collect_ref def in
+       if Tid_hashset.mem ref_set tid then Tid_hashset.add self_rec_set tid;
+       Tid_hashset.iter ref_set (fun ref_ -> add_edge tid ref_))
+     td_arr;
+   let scc = Basic_scc.graph adjacency_array in
+   let res =
+     Vec.map_into_list scc ~unorder:(fun component ->
+         if VI.length component = 1 then
+           let tid_index = VI.get component 0 in
+           let tid, def = td_arr.(tid_index) in
+           if Tid_hashset.mem self_rec_set tid then Rec [ (tid, def) ]
+           else Nonrec (tid, def)
+         else
+           Rec
+             (VI.map_into_list component ~unorder:(fun tid_index ->
+                  td_arr.(tid_index))))
+   in
+   res
+    : t)

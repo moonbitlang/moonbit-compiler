@@ -46,9 +46,11 @@ let inline_single_use_join =
     method! visit_Cexpr_apply ctx func args kind ty ty_args prim loc =
       match Ident.Hash.find_opt ctx.func_def_tbl func with
       | Some (def : Core.fn) ->
-          Lst.fold_left2 def.params args def.body (fun param arg body ->
-              let arg = self#visit_expr ctx arg in
-              Core.let_ param.binder arg body)
+          Lst.fold_left2 def.params args def.body (fun param ->
+              fun arg ->
+               fun body ->
+                let arg = self#visit_expr ctx arg in
+                Core.let_ param.binder arg body)
       | _ -> super#visit_Cexpr_apply ctx func args kind ty ty_args prim loc
 
     method! visit_Cexpr_letfn ctx name fn body ty kind loc =

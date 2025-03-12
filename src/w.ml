@@ -23,9 +23,39 @@ let rec equal (x : t) (y : t) =
       | List ly -> ( try List.for_all2 equal ls ly with _ -> false)
       | _ -> false)
 
+let rec map l f =
+  match l with
+  | [] -> []
+  | x1 :: [] ->
+      let y1 = f x1 in
+      [ y1 ]
+  | [ x1; x2 ] ->
+      let y1 = f x1 in
+      let y2 = f x2 in
+      [ y1; y2 ]
+  | [ x1; x2; x3 ] ->
+      let y1 = f x1 in
+      let y2 = f x2 in
+      let y3 = f x3 in
+      [ y1; y2; y3 ]
+  | [ x1; x2; x3; x4 ] ->
+      let y1 = f x1 in
+      let y2 = f x2 in
+      let y3 = f x3 in
+      let y4 = f x4 in
+      [ y1; y2; y3; y4 ]
+  | x1 :: x2 :: x3 :: x4 :: x5 :: tail ->
+      let y1 = f x1 in
+      let y2 = f x2 in
+      let y3 = f x3 in
+      let y4 = f x4 in
+      let y5 = f x5 in
+      y1 :: y2 :: y3 :: y4 :: y5 :: map tail f
+[@@tail_mod_cons]
+
 let rec sexp_of_t = function
   | Atom s -> S.Atom s
-  | List l -> S.List (List.map sexp_of_t l)
+  | List l -> S.List (map l sexp_of_t)
 
 let char_hex n =
   Char.unsafe_chr (n + if n < 10 then Char.code '0' else Char.code 'A' - 10)
@@ -111,47 +141,39 @@ open struct
     if not (must_escape str) then pp_print_string ppf str
     else pp_print_string ppf (esc_str str)
 
-  let is_ignored (str : t) ~ignores =
-    match (ignores, str) with
-    | [], _ -> false
-    | _, List (Atom str :: _) -> List.exists (fun x -> x = str) ignores
-    | _, (Atom _ | List [] | List (List _ :: _)) -> false
-
-  let rec pp_hum_indent ~ignores indent ppf = function
+  let rec pp_hum_indent indent ppf = function
     | Atom str -> pp_hum_maybe_esc_str ppf str
-    | List (Atom _ :: _) as s when is_ignored s ~ignores -> ()
     | List (h :: t) ->
         pp_open_box ppf indent;
         pp_print_string ppf "(";
-        pp_hum_indent ~ignores indent ppf h;
-        pp_hum_rest ~ignores indent ppf t
+        pp_hum_indent indent ppf h;
+        pp_hum_rest indent ppf t
     | List [] -> pp_print_string ppf "()"
 
-  and pp_hum_rest ~ignores indent ppf = function
+  and pp_hum_rest indent ppf = function
     | h :: t ->
-        if not (is_ignored h ~ignores) then (
-          pp_print_space ppf ();
-          pp_hum_indent ~ignores indent ppf h);
-        pp_hum_rest ~ignores indent ppf t
+        pp_print_space ppf ();
+        pp_hum_indent indent ppf h;
+        pp_hum_rest indent ppf t
     | [] ->
         pp_print_string ppf ")";
         pp_close_box ppf ()
 
-  let to_buffer_hum ~ignores ~buf sexp =
+  let to_buffer_hum ~buf sexp =
     let indent = !default_indent in
     let ppf = Format.formatter_of_buffer buf in
-    Format.fprintf ppf "%a@?" (pp_hum_indent ~ignores indent) sexp
+    Format.fprintf ppf "%a@?" (pp_hum_indent indent) sexp
 
   let buffer () = Buffer.create 1024
 end
 
-let to_string ?(ignores = []) = function
+let to_string = function
   | sexp ->
       let buf = buffer () in
-      to_buffer_hum sexp ~ignores ~buf;
+      to_buffer_hum sexp ~buf;
       Buffer.contents buf
 
-let print ?(ignores = []) s =
+let print s =
   Format.fprintf Format.std_formatter "@[%a@]@."
-    (pp_hum_indent ~ignores !default_indent)
+    (pp_hum_indent !default_indent)
     s

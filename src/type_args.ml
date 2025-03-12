@@ -32,10 +32,11 @@ let rec equal_typ (x : Stype.t) (y : Stype.t) =
   let x = Stype.type_repr x in
   let y = Stype.type_repr y in
   match x with
-  | Tarrow { params_ty = ts1; ret_ty = t1; err_ty = _ } -> (
+  | Tarrow { params_ty = ts1; ret_ty = t1; err_ty = e1; is_async = a1 } -> (
       match y with
-      | Tarrow { params_ty = ts2; ret_ty = t2; err_ty = _ } ->
-          equal_typs ts1 ts2 && equal_typ t1 t2
+      | Tarrow { params_ty = ts2; ret_ty = t2; err_ty = e2; is_async = a2 } ->
+          equal_typs ts1 ts2 && equal_typ t1 t2 && equal_typ_option e1 e2
+          && a1 = a2
       | T_trait _ | T_constr _ | T_builtin _ -> false
       | Tvar _ | Tparam _ | T_blackhole -> assert false)
   | T_constr { type_constructor = c1; tys = ts1 } -> (
@@ -51,7 +52,9 @@ let rec equal_typ (x : Stype.t) (y : Stype.t) =
       | Tvar _ | Tparam _ | T_blackhole -> assert false)
   | T_builtin a -> (
       match y with T_builtin b -> Stype.equal_builtin a b | _ -> false)
-  | Tvar _ | Tparam _ | T_blackhole -> assert false
+  | Tparam _ -> assert false
+  | Tvar _ -> assert false
+  | T_blackhole -> assert false
 
 and equal_typs (xs : Stype.t list) (ys : Stype.t list) =
   match xs with
@@ -61,6 +64,11 @@ and equal_typs (xs : Stype.t list) (ys : Stype.t list) =
       | y :: rest2 -> equal_typ x y && equal_typs rest1 rest2
       | _ -> false)
 
+and equal_typ_option (x : Stype.t option) (y : Stype.t option) =
+  match x with
+  | None -> y = None
+  | Some x -> ( match y with Some y -> equal_typ x y | None -> false)
+
 let equal (xs : t) (ys : t) = Arr.for_all2_no_exn xs ys equal_typ
 let ( +> ) = Buffer.add_char
 let ( +>> ) = Buffer.add_string
@@ -69,7 +77,7 @@ let append_typ_to_buffer (buf : Buffer.t) (ty : Stype.t) =
   let rec go (ty : Stype.t) =
     let ty = Stype.type_repr ty in
     match ty with
-    | Tarrow { params_ty; ret_ty; err_ty } -> (
+    | Tarrow { params_ty; ret_ty; err_ty; is_async = _ } -> (
         buf +> '<';
         (match params_ty with
         | [] -> ()
@@ -102,6 +110,8 @@ let append_typ_to_buffer (buf : Buffer.t) (ty : Stype.t) =
     | T_builtin T_unit -> buf +>> "Unit"
     | T_builtin T_bool -> buf +>> "Bool"
     | T_builtin T_byte -> buf +>> "Byte"
+    | T_builtin T_int16 -> buf +>> "Int16"
+    | T_builtin T_uint16 -> buf +>> "UInt16"
     | T_builtin T_char -> buf +>> "Char"
     | T_builtin T_int -> buf +>> "Int"
     | T_builtin T_int64 -> buf +>> "Int64"
@@ -111,7 +121,9 @@ let append_typ_to_buffer (buf : Buffer.t) (ty : Stype.t) =
     | T_builtin T_double -> buf +>> "Double"
     | T_builtin T_string -> buf +>> "String"
     | T_builtin T_bytes -> buf +>> "Bytes"
-    | Tparam _ | Tvar _ | T_blackhole -> assert false
+    | Tvar _ -> assert false
+    | Tparam _ -> assert false
+    | T_blackhole -> assert false
   and gos (sep : char) = function
     | [] -> ()
     | ty :: [] -> go ty
@@ -122,13 +134,16 @@ let append_typ_to_buffer (buf : Buffer.t) (ty : Stype.t) =
   in
   go ty
 
-let mangle (tys : t) : string =
-  let buf = Buffer.create 16 in
-  tys
-  |> Array.iteri (fun i ty ->
-         if i > 0 then Buffer.add_string buf "+";
-         append_typ_to_buffer buf ty);
-  Buffer.contents buf
+let mangle (tys : t) =
+  (let buf = Buffer.create 16 in
+   Array.iteri
+     (fun i ->
+       fun ty ->
+        if i > 0 then Buffer.add_string buf "+";
+        append_typ_to_buffer buf ty)
+     tys;
+   Buffer.contents buf
+    : string)
 
 let mangle_ty (ty : Stype.t) =
   let buf = Buffer.create 16 in

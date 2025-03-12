@@ -51,7 +51,9 @@ let run_with_protection f =
   with exn ->
     Printf.eprintf "%s\n" ice_message;
     Printf.eprintf "  %s\n\n" !current_bug_report_url;
-    let error_message = Printexc.to_string exn in
+    let error_message =
+      match exn with Failure msg -> msg | _ -> Printexc.to_string exn
+    in
     Printf.eprintf "Error: %s\n\n" error_message;
     (if Printexc.backtrace_status () then
        let backtrace = Printexc.get_backtrace () in

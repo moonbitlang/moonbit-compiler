@@ -143,34 +143,37 @@ include struct
   let _ = sexp_of_param_kind
 
   let equal_param_kind =
-    (fun a__039_ b__040_ ->
-       if Stdlib.( == ) a__039_ b__040_ then true
-       else
-         match (a__039_, b__040_) with
-         | Positional _a__041_, Positional _b__042_ ->
-             Stdlib.( = ) (_a__041_ : int) _b__042_
-         | Positional _, _ -> false
-         | _, Positional _ -> false
-         | Labelled _a__043_, Labelled _b__044_ ->
-             Stdlib.( && )
-               (Stdlib.( = ) (_a__043_.label : string) _b__044_.label)
-               (Stdlib.( = ) (_a__043_.is_mut : bool) _b__044_.is_mut)
-         | Labelled _, _ -> false
-         | _, Labelled _ -> false
-         | Optional _a__045_, Optional _b__046_ ->
-             Stdlib.( && )
-               (Stdlib.( = ) (_a__045_.label : string) _b__046_.label)
-               (Ppx_base.equal_list
-                  (fun a__047_ b__048_ -> Stdlib.( = ) (a__047_ : int) b__048_)
-                  _a__045_.depends_on _b__046_.depends_on)
-         | Optional _, _ -> false
-         | _, Optional _ -> false
-         | Autofill _a__049_, Autofill _b__050_ ->
-             Stdlib.( = ) (_a__049_.label : string) _b__050_.label
-         | Autofill _, _ -> false
-         | _, Autofill _ -> false
-         | Question_optional _a__051_, Question_optional _b__052_ ->
-             Stdlib.( = ) (_a__051_.label : string) _b__052_.label
+    (fun a__039_ ->
+       fun b__040_ ->
+        if Stdlib.( == ) a__039_ b__040_ then true
+        else
+          match (a__039_, b__040_) with
+          | Positional _a__041_, Positional _b__042_ ->
+              Stdlib.( = ) (_a__041_ : int) _b__042_
+          | Positional _, _ -> false
+          | _, Positional _ -> false
+          | Labelled _a__043_, Labelled _b__044_ ->
+              Stdlib.( && )
+                (Stdlib.( = ) (_a__043_.label : string) _b__044_.label)
+                (Stdlib.( = ) (_a__043_.is_mut : bool) _b__044_.is_mut)
+          | Labelled _, _ -> false
+          | _, Labelled _ -> false
+          | Optional _a__045_, Optional _b__046_ ->
+              Stdlib.( && )
+                (Stdlib.( = ) (_a__045_.label : string) _b__046_.label)
+                (Ppx_base.equal_list
+                   (fun a__047_ ->
+                     fun (b__048_ [@merlin.hide]) ->
+                      (Stdlib.( = ) (a__047_ : int) b__048_ [@merlin.hide]))
+                   _a__045_.depends_on _b__046_.depends_on)
+          | Optional _, _ -> false
+          | _, Optional _ -> false
+          | Autofill _a__049_, Autofill _b__050_ ->
+              Stdlib.( = ) (_a__049_.label : string) _b__050_.label
+          | Autofill _, _ -> false
+          | _, Autofill _ -> false
+          | Question_optional _a__051_, Question_optional _b__052_ ->
+              Stdlib.( = ) (_a__051_.label : string) _b__052_.label
       : param_kind -> param_kind -> bool)
 
   let _ = equal_param_kind
@@ -182,18 +185,21 @@ include struct
   let _ = fun (_ : t) -> ()
 
   let equal =
-    (fun a__053_ b__054_ ->
-       if Stdlib.( == ) a__053_ b__054_ then true
-       else
-         match (a__053_, b__054_) with
-         | Simple _a__055_, Simple _b__056_ ->
-             Stdlib.( = ) (_a__055_ : int) _b__056_
-         | Simple _, _ -> false
-         | _, Simple _ -> false
-         | Complex _a__057_, Complex _b__058_ ->
-             Ppx_base.equal_list
-               (fun a__059_ b__060_ -> equal_param_kind a__059_ b__060_)
-               _a__057_ _b__058_
+    (fun a__053_ ->
+       fun b__054_ ->
+        if Stdlib.( == ) a__053_ b__054_ then true
+        else
+          match (a__053_, b__054_) with
+          | Simple _a__055_, Simple _b__056_ ->
+              Stdlib.( = ) (_a__055_ : int) _b__056_
+          | Simple _, _ -> false
+          | _, Simple _ -> false
+          | Complex _a__057_, Complex _b__058_ ->
+              Ppx_base.equal_list
+                (fun a__059_ ->
+                  fun (b__060_ [@merlin.hide]) ->
+                   (equal_param_kind a__059_ b__060_ [@merlin.hide]))
+                _a__057_ _b__058_
       : t -> t -> bool)
 
   let _ = equal
@@ -225,10 +231,11 @@ let is_simple = function Simple _ -> true | Complex _ -> false
 let count_positional = function
   | Simple n -> n
   | Complex kinds ->
-      Lst.fold_left kinds 0 (fun count kind ->
-          match kind with
-          | Positional _ -> count + 1
-          | Labelled _ | Optional _ | Autofill _ | Question_optional _ -> count)
+      Lst.fold_left kinds 0 (fun count ->
+          fun kind ->
+           match kind with
+           | Positional _ -> count + 1
+           | Labelled _ | Optional _ | Autofill _ | Question_optional _ -> count)
 
 let analyze_default_expr_deps_visitor =
   let module H = Basic_hashset_string in
@@ -244,127 +251,145 @@ let analyze_default_expr_deps_visitor =
 let analyze_default_expr_deps (params : string list) (expr : Syntax.expr) =
   let module H = Basic_hashset_string in
   let unseen = H.create 17 in
-  Lst.iter params (H.add unseen);
+  Lst.iter params ~f:(H.add unseen);
   analyze_default_expr_deps_visitor#visit_expr unseen expr;
-  Lst.filter_mapi params (fun name index ->
-      if H.mem unseen name then None else Some index)
+  Lst.filter_mapi params (fun name ->
+      fun index -> if H.mem unseen name then None else Some index)
 
-let from_params ~(base : Loc.t) (params : Syntax.parameter list) :
-    t Local_diagnostics.partial_info =
-  let module H = Basic_hash_string in
-  let seen_labels = H.create 17 in
-  let positional_index = ref 0 in
-  let errors = ref [] in
-  let prev_params = Vec.empty () in
-  let kinds =
-    Lst.map params (fun p ->
-        let label = p.param_binder.binder_name in
-        let loc = p.param_binder.loc_ in
-        let check_duplicate () =
-          match H.find_opt seen_labels label with
-          | None -> H.add seen_labels label loc
-          | Some first_loc ->
-              errors :=
-                Errors.duplicated_label_in_decl ~label
-                  ~first_loc:(Rloc.to_loc ~base first_loc)
-                  ~second_loc:loc
-                :: !errors
-            [@@inline]
-        in
-        let kind =
-          match p.param_kind with
-          | Positional ->
-              let i = !positional_index in
-              incr positional_index;
-              Positional i
-          | Labelled ->
-              check_duplicate ();
-              Labelled { label; is_mut = false; loc_ = Rloc.to_loc ~base loc }
-          | Optional { default } -> (
-              check_duplicate ();
-              match default with
-              | Pexpr_hole { kind = Incomplete } ->
-                  Autofill { label; loc_ = Rloc.to_loc ~base loc }
-              | _ ->
-                  Optional
-                    {
-                      label;
-                      depends_on =
-                        analyze_default_expr_deps (Vec.to_list prev_params)
-                          default;
-                      loc_ = Rloc.to_loc ~base loc;
-                    })
-          | Question_optional ->
-              check_duplicate ();
-              Question_optional { label; loc_ = Rloc.to_loc ~base loc }
-        in
-        Vec.push prev_params p.param_binder.binder_name;
-        kind)
-  in
-  let t =
-    if H.length seen_labels = 0 then Simple !positional_index else Complex kinds
-  in
-  match !errors with [] -> Ok t | errs -> Partial (t, errs)
+let from_params ~(base : Loc.t) (params : Syntax.parameter list) =
+  (let module H = Basic_hash_string in
+   let seen_labels = H.create 17 in
+   let positional_index = ref 0 in
+   let errors = ref [] in
+   let prev_params = Vec.empty () in
+   let kinds =
+     Lst.map params (fun p ->
+         match p with
+         | Discard_positional _ ->
+             let i = !positional_index in
+             incr positional_index;
+             Positional i
+         | Positional { binder; _ }
+         | Labelled { binder; _ }
+         | Optional { binder; _ }
+         | Question_optional { binder; _ } ->
+             let ({ binder_name = label; loc_ = loc } : Syntax.binder) =
+               binder
+             in
+             let check_duplicate () =
+               match H.find_opt seen_labels label with
+               | None -> H.add seen_labels label loc
+               | Some first_loc ->
+                   errors :=
+                     Errors.duplicated_label_in_decl ~label
+                       ~first_loc:(Rloc.to_loc ~base first_loc)
+                       ~second_loc:loc
+                     :: !errors
+                 [@@inline]
+             in
+             let kind =
+               match p with
+               | Positional _ ->
+                   let i = !positional_index in
+                   incr positional_index;
+                   Positional i
+               | Labelled _ ->
+                   check_duplicate ();
+                   Labelled
+                     { label; is_mut = false; loc_ = Rloc.to_loc ~base loc }
+               | Optional { default; _ } -> (
+                   check_duplicate ();
+                   match default with
+                   | Pexpr_hole { kind = Incomplete } ->
+                       Autofill { label; loc_ = Rloc.to_loc ~base loc }
+                   | _ ->
+                       Optional
+                         {
+                           label;
+                           depends_on =
+                             analyze_default_expr_deps (Vec.to_list prev_params)
+                               default;
+                           loc_ = Rloc.to_loc ~base loc;
+                         })
+               | Question_optional _ ->
+                   check_duplicate ();
+                   Question_optional { label; loc_ = Rloc.to_loc ~base loc }
+               | Discard_positional _ ->
+                   failwith
+                     "Unreachable: Discard_positional and Positional are \
+                      handled above"
+             in
+             Vec.push prev_params label;
+             kind)
+   in
+   let t =
+     if H.length seen_labels = 0 then Simple !positional_index
+     else Complex kinds
+   in
+   match !errors with [] -> Ok t | errs -> Partial (t, errs)
+    : t Local_diagnostics.partial_info)
 
-let from_constr_params ~(base : Loc.t) (params : Syntax.constr_param list) :
-    t Local_diagnostics.partial_info =
-  let module H = Basic_hash_string in
-  let seen_labels = H.create 17 in
-  let positional_index = ref 0 in
-  let errors = ref [] in
-  let kinds =
-    Lst.map params (fun p ->
-        match p.cparam_label with
-        | None ->
-            let i = !positional_index in
-            incr positional_index;
-            Positional i
-        | Some { label_name = label; loc_ } ->
-            (match H.find_opt seen_labels label with
-            | None -> H.add seen_labels label loc_
-            | Some first_loc ->
-                errors :=
-                  Errors.duplicated_label_in_decl ~label
-                    ~first_loc:(Rloc.to_loc ~base first_loc)
-                    ~second_loc:loc_
-                  :: !errors);
-            Labelled
-              { label; is_mut = p.cparam_mut; loc_ = Rloc.to_loc ~base loc_ })
-  in
-  let t =
-    if H.length seen_labels = 0 then Simple !positional_index else Complex kinds
-  in
-  match !errors with [] -> Ok t | errs -> Partial (t, errs)
+let from_constr_params ~(base : Loc.t) (params : Syntax.constr_param list) =
+  (let module H = Basic_hash_string in
+   let seen_labels = H.create 17 in
+   let positional_index = ref 0 in
+   let errors = ref [] in
+   let kinds =
+     Lst.map params (fun p ->
+         match p.cparam_label with
+         | None ->
+             let i = !positional_index in
+             incr positional_index;
+             Positional i
+         | Some { label_name = label; loc_ } ->
+             (match H.find_opt seen_labels label with
+             | None -> H.add seen_labels label loc_
+             | Some first_loc ->
+                 errors :=
+                   Errors.duplicated_label_in_decl ~label
+                     ~first_loc:(Rloc.to_loc ~base first_loc)
+                     ~second_loc:loc_
+                   :: !errors);
+             Labelled
+               { label; is_mut = p.cparam_mut; loc_ = Rloc.to_loc ~base loc_ })
+   in
+   let t =
+     if H.length seen_labels = 0 then Simple !positional_index
+     else Complex kinds
+   in
+   match !errors with [] -> Ok t | errs -> Partial (t, errs)
+    : t Local_diagnostics.partial_info)
 
 let from_trait_method_params ~(base : Loc.t)
-    (params : Syntax.trait_method_param list) : t Local_diagnostics.partial_info
-    =
-  let module H = Basic_hash_string in
-  let seen_labels = H.create 17 in
-  let positional_index = ref 0 in
-  let errors = ref [] in
-  let kinds =
-    Lst.map params (fun p ->
-        match p.tmparam_label with
-        | None ->
-            let i = !positional_index in
-            incr positional_index;
-            Positional i
-        | Some { label_name = label; loc_ } ->
-            (match H.find_opt seen_labels label with
-            | None -> H.add seen_labels label loc_
-            | Some first_loc ->
-                errors :=
-                  Errors.duplicated_label_in_decl ~label
-                    ~first_loc:(Rloc.to_loc ~base first_loc)
-                    ~second_loc:loc_
-                  :: !errors);
-            Labelled { label; is_mut = false; loc_ = Rloc.to_loc ~base loc_ })
-  in
-  let t =
-    if H.length seen_labels = 0 then Simple !positional_index else Complex kinds
-  in
-  match !errors with [] -> Ok t | errs -> Partial (t, errs)
+    (params : Syntax.trait_method_param list) =
+  (let module H = Basic_hash_string in
+   let seen_labels = H.create 17 in
+   let positional_index = ref 0 in
+   let errors = ref [] in
+   let kinds =
+     Lst.map params (fun p ->
+         match p.tmparam_label with
+         | None ->
+             let i = !positional_index in
+             incr positional_index;
+             Positional i
+         | Some { label_name = label; loc_ } ->
+             (match H.find_opt seen_labels label with
+             | None -> H.add seen_labels label loc_
+             | Some first_loc ->
+                 errors :=
+                   Errors.duplicated_label_in_decl ~label
+                     ~first_loc:(Rloc.to_loc ~base first_loc)
+                     ~second_loc:loc_
+                   :: !errors);
+             Labelled { label; is_mut = false; loc_ = Rloc.to_loc ~base loc_ })
+   in
+   let t =
+     if H.length seen_labels = 0 then Simple !positional_index
+     else Complex kinds
+   in
+   match !errors with [] -> Ok t | errs -> Partial (t, errs)
+    : t Local_diagnostics.partial_info)
 
 let iter arity f =
   match arity with
@@ -372,11 +397,12 @@ let iter arity f =
       for i = 0 to n - 1 do
         f (Positional i)
       done
-  | Complex params -> Lst.iter params f
+  | Complex params -> Lst.iter params ~f
 
 let iter2 arity items f =
   match arity with
-  | Simple _ -> List.iteri (fun index item -> f (Positional index) item) items
+  | Simple _ ->
+      List.iteri (fun index -> fun item -> f (Positional index) item) items
   | Complex params -> Lst.iter2 params items f
 
 let to_list_map arity f =
@@ -386,7 +412,8 @@ let to_list_map arity f =
 
 let to_list_map2 arity items f =
   match arity with
-  | Simple _ -> Lst.mapi items (fun index item -> f (Positional index) item)
+  | Simple _ ->
+      Lst.mapi items (fun index -> fun item -> f (Positional index) item)
   | Complex params -> Lst.map2 params items f
 
 let find_constr_label arity typs ~label =
@@ -423,13 +450,18 @@ let sexp_of_t arity =
          match kind with
          | Positional _ -> S.Atom "_"
          | Labelled { label; is_mut = false } ->
-             S.Atom ("~" ^ label : Stdlib.String.t)
+             S.Atom ((label ^ "~" : Stdlib.String.t) [@merlin.hide])
          | Labelled { label; is_mut = true } ->
-             S.List [ Atom "mut"; Atom ("~" ^ label : Stdlib.String.t) ]
-         | Optional { label; _ } -> S.Atom ("?" ^ label : Stdlib.String.t)
+             S.List
+               [
+                 Atom "mut";
+                 Atom ((label ^ "~" : Stdlib.String.t) [@merlin.hide]);
+               ]
+         | Optional { label; _ } ->
+             S.Atom ((label ^ "?=" : Stdlib.String.t) [@merlin.hide])
          | Autofill { label } -> S.List [ Atom "auto"; Atom label ]
          | Question_optional { label } ->
-             Atom ("~" ^ label ^ "?" : Stdlib.String.t)))
+             Atom ((label ^ "?" : Stdlib.String.t) [@merlin.hide])))
 
 type arg_kind = Positional of int | Labelled of string
 
@@ -449,31 +481,33 @@ include struct
   let _ = sexp_of_arg_kind
 
   let equal_arg_kind =
-    (fun a__065_ b__066_ ->
-       if Stdlib.( == ) a__065_ b__066_ then true
-       else
-         match (a__065_, b__066_) with
-         | Positional _a__067_, Positional _b__068_ ->
-             Stdlib.( = ) (_a__067_ : int) _b__068_
-         | Positional _, _ -> false
-         | _, Positional _ -> false
-         | Labelled _a__069_, Labelled _b__070_ ->
-             Stdlib.( = ) (_a__069_ : string) _b__070_
+    (fun a__065_ ->
+       fun b__066_ ->
+        if Stdlib.( == ) a__065_ b__066_ then true
+        else
+          match (a__065_, b__066_) with
+          | Positional _a__067_, Positional _b__068_ ->
+              Stdlib.( = ) (_a__067_ : int) _b__068_
+          | Positional _, _ -> false
+          | _, Positional _ -> false
+          | Labelled _a__069_, Labelled _b__070_ ->
+              Stdlib.( = ) (_a__069_ : string) _b__070_
       : arg_kind -> arg_kind -> bool)
 
   let _ = equal_arg_kind
 
   let (hash_fold_arg_kind : Ppx_base.state -> arg_kind -> Ppx_base.state) =
-    (fun hsv arg ->
-       match arg with
-       | Positional _a0 ->
-           let hsv = Ppx_base.hash_fold_int hsv 0 in
-           let hsv = hsv in
-           Ppx_base.hash_fold_int hsv _a0
-       | Labelled _a0 ->
-           let hsv = Ppx_base.hash_fold_int hsv 1 in
-           let hsv = hsv in
-           Ppx_base.hash_fold_string hsv _a0
+    (fun hsv ->
+       fun arg ->
+        match arg with
+        | Positional _a0 ->
+            let hsv = Ppx_base.hash_fold_int hsv 0 in
+            let hsv = hsv in
+            Ppx_base.hash_fold_int hsv _a0
+        | Labelled _a0 ->
+            let hsv = Ppx_base.hash_fold_int hsv 1 in
+            let hsv = hsv in
+            Ppx_base.hash_fold_string hsv _a0
       : Ppx_base.state -> arg_kind -> Ppx_base.state)
 
   let _ = hash_fold_arg_kind
@@ -533,14 +567,23 @@ module Hashset = Basic_hashsetf.Make (struct
   end
 end)
 
-let to_hashtbl (type a b) arity (items : a list) (f : param_kind -> a -> b) =
+let to_hashtbl (type a) (type b) arity (items : a list)
+    (f : param_kind -> a -> b) =
   let tbl : b Hash.t = Hash.create 17 in
-  iter2 arity items (fun kind item ->
-      match kind with
-      | Positional i -> Hash.add tbl (Positional i) (f kind item)
-      | Labelled { label; _ }
-      | Optional { label; _ }
-      | Autofill { label }
-      | Question_optional { label } ->
-          Hash.add tbl (Labelled label) (f kind item));
+  iter2 arity items (fun kind ->
+      fun item ->
+       match kind with
+       | Positional i -> Hash.add tbl (Positional i) (f kind item)
+       | Labelled { label; _ }
+       | Optional { label; _ }
+       | Autofill { label }
+       | Question_optional { label } ->
+           Hash.add tbl (Labelled label) (f kind item));
   tbl
+
+let is_immutable_constr_arity arity =
+  match arity with
+  | Simple _ -> true
+  | Complex params ->
+      Basic_lst.for_all params (fun p ->
+          match p with Labelled { is_mut; _ } -> not is_mut | _ -> true)

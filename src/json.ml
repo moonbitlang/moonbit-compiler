@@ -13,6 +13,8 @@
 *)
 
 
+module Lst = Basic_lst
+
 type t =
   [ `Null
   | `Bool of bool
@@ -34,6 +36,6 @@ let rec to_string (t : t) =
   | `Assoc l ->
       "{"
       ^ String.concat ","
-          (List.map (fun (k, v) -> escaped_quote k ^ ":" ^ to_string v) l)
+          (Lst.map l (fun (k, v) -> escaped_quote k ^ ":" ^ to_string v))
       ^ "}"
-  | `List l -> "[" ^ String.concat "," (List.map to_string l) ^ "]"
+  | `List l -> "[" ^ String.concat "," (Lst.map l to_string) ^ "]"

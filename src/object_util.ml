@@ -38,23 +38,25 @@ include struct
   let _ = sexp_of_object_key
 
   let equal_object_key =
-    (fun a__006_ b__007_ ->
-       if Stdlib.( == ) a__006_ b__007_ then true
-       else
-         Stdlib.( && )
-           (Type_path.equal a__006_.trait b__007_.trait)
-           (Stdlib.( = ) (a__006_.type_ : string) b__007_.type_)
+    (fun a__006_ ->
+       fun b__007_ ->
+        if Stdlib.( == ) a__006_ b__007_ then true
+        else
+          Stdlib.( && )
+            (Type_path.equal a__006_.trait b__007_.trait)
+            (Stdlib.( = ) (a__006_.type_ : string) b__007_.type_)
       : object_key -> object_key -> bool)
 
   let _ = equal_object_key
 
   let (hash_fold_object_key : Ppx_base.state -> object_key -> Ppx_base.state) =
-   fun hsv arg ->
-    let hsv =
-      let hsv = hsv in
-      Type_path.hash_fold_t hsv arg.trait
-    in
-    Ppx_base.hash_fold_string hsv arg.type_
+   fun hsv ->
+    fun arg ->
+     let hsv =
+       let hsv = hsv in
+       Type_path.hash_fold_t hsv arg.trait
+     in
+     Ppx_base.hash_fold_string hsv arg.type_
 
   let _ = hash_fold_object_key
 
@@ -105,7 +107,8 @@ include struct
            method_id = method_id__011_;
            method_prim = method_prim__013_;
            method_ty = method_ty__015_;
-         } ->
+         }
+     ->
        let bnds__010_ = ([] : _ Stdlib.List.t) in
        let bnds__010_ =
          let arg__016_ = Mtype.sexp_of_t method_ty__015_ in
@@ -130,16 +133,6 @@ include struct
 
   let _ = sexp_of_object_method_item
 end
-
-let get_trait_methods ~(trait : Type_path.t) ~stype_defs =
-  let trait =
-    match trait with
-    | Toplevel { pkg; id } ->
-        let types = Basic_hash_string.find_exn stype_defs pkg in
-        Typing_info.find_trait_exn types id
-    | _ -> assert false
-  in
-  trait.closure_methods
 
 type object_info = { self_ty : Mtype.t; methods : object_method_item list }
 

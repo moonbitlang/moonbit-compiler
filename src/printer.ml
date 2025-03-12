@@ -38,7 +38,8 @@ let type_to_string_aux (ctx : printer_ctx) (ty : Stype.t) =
   let append s = Buffer.add_string buf s in
   let rec go (ty : Stype.t) =
     match ty with
-    | Tarrow { params_ty; ret_ty; err_ty } -> (
+    | Tarrow { params_ty; ret_ty; err_ty; is_async } -> (
+        if is_async then append "async ";
         append "(";
         (match params_ty with
         | [] -> ()
@@ -56,6 +57,9 @@ let type_to_string_aux (ctx : printer_ctx) (ty : Stype.t) =
         append "(";
         gos ", " tys;
         append ")"
+    | T_constr { type_constructor = T_local { toplevel_id = _; name }; tys = _ }
+      ->
+        append name
     | T_constr { type_constructor = c; tys = args } -> (
         append (Type_path_util.name c);
         match args with
@@ -70,10 +74,14 @@ let type_to_string_aux (ctx : printer_ctx) (ty : Stype.t) =
         match ctx.type_param_names with
         | None -> append name_
         | Some names -> append names.(index))
-    | T_trait trait -> append (Type_path_util.name trait)
+    | T_trait trait ->
+        append "&";
+        append (Type_path_util.name trait)
     | T_builtin T_unit -> append "Unit"
     | T_builtin T_bool -> append "Bool"
     | T_builtin T_byte -> append "Byte"
+    | T_builtin T_int16 -> append "Int16"
+    | T_builtin T_uint16 -> append "UInt16"
     | T_builtin T_char -> append "Char"
     | T_builtin T_int -> append "Int"
     | T_builtin T_int64 -> append "Int64"
@@ -106,28 +114,34 @@ let type_pair_to_string typ1 typ2 =
 let toplevel_function_type_to_string ~arity typ =
   let ctx = make_ctx None in
   match (typ : Stype.t) with
-  | Tarrow { params_ty; ret_ty; err_ty } ->
+  | Tarrow { params_ty; ret_ty; err_ty; is_async } ->
       let buf = Buffer.create 17 in
       let is_first = ref true in
+      if is_async then Buffer.add_string buf "async ";
       Buffer.add_char buf '(';
-      Fn_arity.iter2 arity params_ty (fun kind ty ->
-          if !is_first then is_first := false else Buffer.add_string buf ", ";
-          match kind with
-          | Positional _ -> Buffer.add_string buf (type_to_string_aux ctx ty)
-          | Labelled { label; _ } ->
-              Buffer.add_string buf (label ^ "~ : " : Stdlib.String.t);
-              Buffer.add_string buf (type_to_string_aux ctx ty)
-          | Optional { label; _ } ->
-              Buffer.add_string buf (label ^ "~ : " : Stdlib.String.t);
-              Buffer.add_string buf (type_to_string_aux ctx ty);
-              Buffer.add_string buf " = .."
-          | Autofill { label } ->
-              Buffer.add_string buf (label ^ "~ : " : Stdlib.String.t);
-              Buffer.add_string buf (type_to_string_aux ctx ty);
-              Buffer.add_string buf " = _"
-          | Question_optional { label } ->
-              Buffer.add_string buf (label ^ "? : " : Stdlib.String.t);
-              Buffer.add_string buf (type_to_string_aux ctx ty));
+      Fn_arity.iter2 arity params_ty (fun kind ->
+          fun ty ->
+           if !is_first then is_first := false else Buffer.add_string buf ", ";
+           match kind with
+           | Positional _ -> Buffer.add_string buf (type_to_string_aux ctx ty)
+           | Labelled { label; _ } ->
+               Buffer.add_string buf
+                 ((label ^ "~ : " : Stdlib.String.t) [@merlin.hide]);
+               Buffer.add_string buf (type_to_string_aux ctx ty)
+           | Optional { label; _ } ->
+               Buffer.add_string buf
+                 ((label ^ "~ : " : Stdlib.String.t) [@merlin.hide]);
+               Buffer.add_string buf (type_to_string_aux ctx ty);
+               Buffer.add_string buf " = .."
+           | Autofill { label } ->
+               Buffer.add_string buf
+                 ((label ^ "~ : " : Stdlib.String.t) [@merlin.hide]);
+               Buffer.add_string buf (type_to_string_aux ctx ty);
+               Buffer.add_string buf " = _"
+           | Question_optional { label } ->
+               Buffer.add_string buf
+                 ((label ^ "? : " : Stdlib.String.t) [@merlin.hide]);
+               Buffer.add_string buf (type_to_string_aux ctx ty));
       Buffer.add_string buf ") -> ";
       Buffer.add_string buf (type_to_string_aux ctx ret_ty);
       (match err_ty with
@@ -143,12 +157,14 @@ let tvar_env_to_string (env : Tvar_env.t) =
   else
     let buf = Buffer.create 17 in
     Buffer.add_char buf '[';
-    Tvar_env.iteri env (fun i tvar_info ->
-        if i > 0 then Buffer.add_string buf ", ";
-        Buffer.add_string buf tvar_info.name;
-        Lst.iteri tvar_info.constraints (fun i c ->
-            if i = 0 then Buffer.add_string buf " : "
-            else Buffer.add_string buf " + ";
-            Buffer.add_string buf (Type_path_util.name c.trait)));
+    Tvar_env.iteri env (fun i ->
+        fun tvar_info ->
+         if i > 0 then Buffer.add_string buf ", ";
+         Buffer.add_string buf tvar_info.name;
+         Lst.iteri tvar_info.constraints ~f:(fun i ->
+             fun c ->
+              if i = 0 then Buffer.add_string buf " : "
+              else Buffer.add_string buf " + ";
+              Buffer.add_string buf (Type_path_util.name c.trait)));
     Buffer.add_char buf ']';
     Buffer.contents buf

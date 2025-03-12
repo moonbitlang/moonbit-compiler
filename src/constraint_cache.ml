@@ -31,11 +31,12 @@ module Key = struct
     let _ = sexp_of_t
 
     let (hash_fold_t : Ppx_base.state -> t -> Ppx_base.state) =
-     fun hsv arg ->
-      let e0, e1 = arg in
-      let hsv = Hashed_type.hash_fold_t hsv e0 in
-      let hsv = Type_path.hash_fold_t hsv e1 in
-      hsv
+     fun hsv ->
+      fun arg ->
+       let e0, e1 = arg in
+       let hsv = Hashed_type.hash_fold_t hsv e0 in
+       let hsv = Type_path.hash_fold_t hsv e1 in
+       hsv
 
     let _ = hash_fold_t
 
@@ -50,12 +51,13 @@ module Key = struct
     let _ = hash
 
     let equal =
-      (fun a__005_ b__006_ ->
-         let t__007_, t__008_ = a__005_ in
-         let t__009_, t__010_ = b__006_ in
-         Stdlib.( && )
-           (Hashed_type.equal t__007_ t__009_)
-           (Type_path.equal t__008_ t__010_)
+      (fun a__005_ ->
+         fun b__006_ ->
+          let t__007_, t__008_ = a__005_ in
+          let t__009_, t__010_ = b__006_ in
+          Stdlib.( && )
+            (Hashed_type.equal t__007_ t__009_)
+            (Type_path.equal t__008_ t__010_)
         : t -> t -> bool)
 
     let _ = equal

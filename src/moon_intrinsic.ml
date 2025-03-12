@@ -40,6 +40,13 @@ type t =
   | Array_unsafe_get
   | Array_set
   | Array_unsafe_set
+  | ArrayView_length
+  | ArrayView_unsafe_set
+  | ArrayView_unsafe_get
+  | ArrayView_unsafe_as_view
+  | BytesView_length
+  | BytesView_unsafe_get
+  | BytesView_unsafe_as_view
 
 include struct
   let _ = fun (_ : t) -> ()
@@ -70,34 +77,51 @@ include struct
      | Array_unsafe_get -> S.Atom "Array_unsafe_get"
      | Array_set -> S.Atom "Array_set"
      | Array_unsafe_set -> S.Atom "Array_unsafe_set"
+     | ArrayView_length -> S.Atom "ArrayView_length"
+     | ArrayView_unsafe_set -> S.Atom "ArrayView_unsafe_set"
+     | ArrayView_unsafe_get -> S.Atom "ArrayView_unsafe_get"
+     | ArrayView_unsafe_as_view -> S.Atom "ArrayView_unsafe_as_view"
+     | BytesView_length -> S.Atom "BytesView_length"
+     | BytesView_unsafe_get -> S.Atom "BytesView_unsafe_get"
+     | BytesView_unsafe_as_view -> S.Atom "BytesView_unsafe_as_view"
       : t -> S.t)
 
   let _ = sexp_of_t
+  let equal = (Stdlib.( = ) : t -> t -> bool)
+  let _ = equal
 end
 
-let string_of_t (i : t) : string =
-  match i with
-  | Char_to_string -> "%char.to_string"
-  | F64_to_string -> "%f64.to_string"
-  | String_substring -> "%string.substring"
-  | FixedArray_join -> "%fixedarray.join"
-  | FixedArray_iter -> "%fixedarray.iter"
-  | FixedArray_iteri -> "%fixedarray.iteri"
-  | FixedArray_map -> "%fixedarray.map"
-  | FixedArray_fold_left -> "%fixedarray.fold_left"
-  | FixedArray_copy -> "%fixedarray.copy"
-  | FixedArray_fill -> "%fixedarray.fill"
-  | Iter_map -> "%iter.map"
-  | Iter_iter -> "%iter.iter"
-  | Iter_take -> "%iter.take"
-  | Iter_reduce -> "%iter.reduce"
-  | Iter_from_array -> "%iter.from_array"
-  | Iter_flat_map -> "%iter.flat_map"
-  | Iter_repeat -> "%iter.repeat"
-  | Iter_filter -> "%iter.filter"
-  | Iter_concat -> "%iter.concat"
-  | Array_length -> "%array.length"
-  | Array_get -> "%array.get"
-  | Array_unsafe_get -> "%array.unsafe_get"
-  | Array_set -> "%array.set"
-  | Array_unsafe_set -> "%array.unsafe_set"
+let string_of_t (i : t) =
+  (match i with
+   | Char_to_string -> "%char.to_string"
+   | F64_to_string -> "%f64.to_string"
+   | String_substring -> "%string.substring"
+   | FixedArray_join -> "%fixedarray.join"
+   | FixedArray_iter -> "%fixedarray.iter"
+   | FixedArray_iteri -> "%fixedarray.iteri"
+   | FixedArray_map -> "%fixedarray.map"
+   | FixedArray_fold_left -> "%fixedarray.fold_left"
+   | FixedArray_copy -> "%fixedarray.copy"
+   | FixedArray_fill -> "%fixedarray.fill"
+   | Iter_map -> "%iter.map"
+   | Iter_iter -> "%iter.iter"
+   | Iter_take -> "%iter.take"
+   | Iter_reduce -> "%iter.reduce"
+   | Iter_from_array -> "%iter.from_array"
+   | Iter_flat_map -> "%iter.flat_map"
+   | Iter_repeat -> "%iter.repeat"
+   | Iter_filter -> "%iter.filter"
+   | Iter_concat -> "%iter.concat"
+   | Array_length -> "%array.length"
+   | Array_get -> "%array.get"
+   | Array_unsafe_get -> "%array.unsafe_get"
+   | Array_set -> "%array.set"
+   | Array_unsafe_set -> "%array.unsafe_set"
+   | ArrayView_length -> "%arrayview.length"
+   | ArrayView_unsafe_set -> "%arrayview.unsafe_set"
+   | ArrayView_unsafe_get -> "%arrayview.unsafe_get"
+   | ArrayView_unsafe_as_view -> "%arrayview.unsafe_as_view"
+   | BytesView_length -> "%bytesview.length"
+   | BytesView_unsafe_get -> "%bytesview.unsafe_get"
+   | BytesView_unsafe_as_view -> "%bytesview.unsafe_as_view"
+    : string)

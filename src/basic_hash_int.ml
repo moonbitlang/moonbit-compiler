@@ -23,7 +23,7 @@ include struct
   let _ = sexp_of_key
 
   let equal_key =
-    (fun a__001_ b__002_ -> Stdlib.( = ) (a__001_ : int) b__002_
+    (fun a__001_ -> fun b__002_ -> Stdlib.( = ) (a__001_ : int) b__002_
       : key -> key -> bool)
 
   let _ = equal_key
@@ -51,6 +51,7 @@ let iter2 = Hash_gen.iter2
 let to_list_with = Hash_gen.to_list_with
 let to_list = Hash_gen.to_list
 let to_array = Hash_gen.to_array
+let to_array_map = Hash_gen.to_array_map
 let to_array_filter_map = Hash_gen.to_array_filter_map
 let fold = Hash_gen.fold
 let length = Hash_gen.length
@@ -63,26 +64,28 @@ let add (h : _ t) key data =
   if h.size > Array.length h_data lsl 1 then Hash_gen.resize key_index h
 
 let add_or_update (h : 'a t) (key : key) ~update:(modf : 'a -> 'a)
-    (default : 'a) : 'a =
-  let rec find_bucket (bucketlist : _ bucket) : 'a option =
-    match bucketlist with
-    | Cons rhs ->
-        if equal_key rhs.key key then (
-          let data = modf rhs.data in
-          rhs.data <- data;
-          Some data)
-        else find_bucket rhs.next
-    | Empty -> None
-  in
-  let i = key_index h key in
-  let h_data = h.data in
-  match find_bucket h_data.!(i) with
-  | Some data -> data
-  | None ->
-      h_data.!(i) <- Cons { key; data = default; next = h_data.!(i) };
-      h.size <- h.size + 1;
-      if h.size > Array.length h_data lsl 1 then Hash_gen.resize key_index h;
-      default
+    (default : 'a) =
+  (let rec find_bucket (bucketlist : _ bucket) =
+     (match bucketlist with
+      | Cons rhs ->
+          if equal_key rhs.key key then (
+            let data = modf rhs.data in
+            rhs.data <- data;
+            Some data)
+          else find_bucket rhs.next
+      | Empty -> None
+       : 'a option)
+   in
+   let i = key_index h key in
+   let h_data = h.data in
+   match find_bucket h_data.!(i) with
+   | Some data -> data
+   | None ->
+       h_data.!(i) <- Cons { key; data = default; next = h_data.!(i) };
+       h.size <- h.size + 1;
+       if h.size > Array.length h_data lsl 1 then Hash_gen.resize key_index h;
+       default
+    : 'a)
 
 let remove (h : _ t) key =
   let i = key_index h key in
@@ -121,22 +124,23 @@ let find_key_opt (h : _ t) key =
 let find_default (h : _ t) key default =
   Hash_gen.small_bucket_default equal_key key default h.data.!(key_index h key)
 
-let find_or_update (type v) (h : v t) (key : key) ~(update : key -> v) : v =
-  let rec find_bucket h_data i (bucketlist : _ bucket) =
-    match bucketlist with
-    | Cons rhs ->
-        if equal_key rhs.key key then rhs.data
-        else find_bucket h_data i rhs.next
-    | Empty ->
-        let data = update key in
-        h_data.!(i) <- Hash_gen.Cons { key; data; next = h_data.!(i) };
-        h.size <- h.size + 1;
-        if h.size > Array.length h_data lsl 1 then Hash_gen.resize key_index h;
-        data
-  in
-  let i = key_index h key in
-  let h_data = h.data in
-  find_bucket h_data i h_data.!(i)
+let find_or_update (type v) (h : v t) (key : key) ~(update : key -> v) =
+  (let rec find_bucket h_data i (bucketlist : _ bucket) =
+     match bucketlist with
+     | Cons rhs ->
+         if equal_key rhs.key key then rhs.data
+         else find_bucket h_data i rhs.next
+     | Empty ->
+         let data = update key in
+         h_data.!(i) <- Hash_gen.Cons { key; data; next = h_data.!(i) };
+         h.size <- h.size + 1;
+         if h.size > Array.length h_data lsl 1 then Hash_gen.resize key_index h;
+         data
+   in
+   let i = key_index h key in
+   let h_data = h.data in
+   find_bucket h_data i h_data.!(i)
+    : v)
 
 let find_all (h : _ t) key =
   let rec find_in_bucket (bucketlist : _ bucket) =
@@ -145,6 +149,7 @@ let find_all (h : _ t) key =
     | Cons rhs ->
         if equal_key key rhs.key then rhs.data :: find_in_bucket rhs.next
         else find_in_bucket rhs.next
+      [@@tail_mod_cons]
   in
   find_in_bucket h.data.!(key_index h key)
 
@@ -175,13 +180,13 @@ let mem (h : _ t) key =
 let of_list2 ks vs =
   let len = List.length ks in
   let map = create len in
-  List.iter2 (fun k v -> add map k v) ks vs;
+  List.iter2 (fun k -> fun v -> add map k v) ks vs;
   map
 
 let of_list_map kvs f =
   let len = List.length kvs in
   let map = create len in
-  Lst.iter kvs (fun kv ->
+  Lst.iter kvs ~f:(fun kv ->
       let k, v = f kv in
       add map k v);
   map
@@ -189,7 +194,7 @@ let of_list_map kvs f =
 let of_list kvs =
   let len = List.length kvs in
   let map = create len in
-  Lst.iter kvs (fun (k, v) -> add map k v);
+  Lst.iter kvs ~f:(fun (k, v) -> add map k v);
   map
 
 let sexp_of_t (type a) (cb : a -> _) (x : a t) =

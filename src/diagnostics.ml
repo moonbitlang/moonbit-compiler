@@ -26,7 +26,8 @@ include struct
            loc = loc__002_;
            message = message__004_;
            error_code = error_code__006_;
-         } ->
+         }
+     ->
        let bnds__001_ = ([] : _ Stdlib.List.t) in
        let bnds__001_ =
          let arg__007_ = Error_code.sexp_of_t error_code__006_ in
@@ -48,47 +49,50 @@ include struct
   let _ = sexp_of_report
 
   let compare_report =
-    (fun a__008_ b__009_ ->
-       if Stdlib.( == ) a__008_ b__009_ then 0
-       else
-         match Loc.compare a__008_.loc b__009_.loc with
-         | 0 -> (
-             match
-               Stdlib.compare (a__008_.message : string) b__009_.message
-             with
-             | 0 -> Error_code.compare a__008_.error_code b__009_.error_code
-             | n -> n)
-         | n -> n
+    (fun a__008_ ->
+       fun b__009_ ->
+        if Stdlib.( == ) a__008_ b__009_ then 0
+        else
+          match Loc.compare a__008_.loc b__009_.loc with
+          | 0 -> (
+              match
+                Stdlib.compare (a__008_.message : string) b__009_.message
+              with
+              | 0 -> Error_code.compare a__008_.error_code b__009_.error_code
+              | n -> n)
+          | n -> n
       : report -> report -> int)
 
   let _ = compare_report
 
   let equal_report =
-    (fun a__010_ b__011_ ->
-       if Stdlib.( == ) a__010_ b__011_ then true
-       else
-         Stdlib.( && )
-           (Loc.equal a__010_.loc b__011_.loc)
-           (Stdlib.( && )
-              (Stdlib.( = ) (a__010_.message : string) b__011_.message)
-              (Error_code.equal a__010_.error_code b__011_.error_code))
+    (fun a__010_ ->
+       fun b__011_ ->
+        if Stdlib.( == ) a__010_ b__011_ then true
+        else
+          Stdlib.( && )
+            (Loc.equal a__010_.loc b__011_.loc)
+            (Stdlib.( && )
+               (Stdlib.( = ) (a__010_.message : string) b__011_.message)
+               (Error_code.equal a__010_.error_code b__011_.error_code))
       : report -> report -> bool)
 
   let _ = equal_report
 end
 
-let report_to_json ~is_error report : Json.t =
-  let level = if is_error then "error" else "warning" in
-  `Assoc
-    [
-      ("$message_type", `String "diagnostic");
-      ("level", `String level);
-      ("loc", Loc.t_to_json report.loc);
-      ("message", `String report.message);
-      ("error_code", Error_code.t_to_json report.error_code);
-    ]
+let report_to_json ~is_error report =
+  (let level = if is_error then "error" else "warning" in
+   `Assoc
+     [
+       ("$message_type", `String "diagnostic");
+       ("level", `String level);
+       ("loc", Loc.t_to_json report.loc);
+       ("message", `String report.message);
+       ("error_code", Error_code_utils.to_json report.error_code);
+     ]
+    : Json.t)
 
-module Report_set = Basic_setf.Make (struct
+module Error_set = Basic_setf.Make (struct
   type t = report
 
   include struct
@@ -133,16 +137,16 @@ end)
 exception Fatal_error
 
 type t = {
-  mutable errors : Report_set.t;
+  mutable errors : Error_set.t;
   mutable alerts : Alert_set.t;
   mutable warnings : Warning_set.t;
 }
 
-let has_fatal_errors (x : t) = not (Report_set.is_empty x.errors)
+let has_fatal_errors (x : t) = not (Error_set.is_empty x.errors)
 
 let make () =
   {
-    errors = Report_set.empty;
+    errors = Error_set.empty;
     alerts = Alert_set.empty;
     warnings = Warning_set.empty;
   }
@@ -150,7 +154,7 @@ let make () =
 let add_warning (x : t) (w : warning) =
   x.warnings <- Warning_set.add x.warnings w
 
-let add_error (x : t) (w : report) = x.errors <- Report_set.add x.errors w
+let add_error (x : t) (w : report) = x.errors <- Error_set.add x.errors w
 
 let add_alert (x : t) (a : alert) =
   Alerts.register_alert a.category;
@@ -173,15 +177,15 @@ let iter_reports (x : t) (f : is_error:bool -> report -> unit) =
           {
             loc = w.loc;
             message = Warnings.message ~as_error:is_error w.kind;
-            error_code = Error_code.warning (Warnings.number w.kind);
+            error_code = Error_code_utils.warning (Warnings.number w.kind);
           });
-  Report_set.iter x.errors (fun report -> f ~is_error:true report)
+  Error_set.iter x.errors (fun report -> f ~is_error:true report)
 
 let render_report ~is_error ({ loc; message; error_code } as report) =
   match !Basic_config.error_format with
   | Basic_config.Human ->
       Printf.sprintf "%s [%s] %s\n" (Loc.loc_range_string loc)
-        (Error_code.to_string error_code)
+        (Error_code_utils.to_string error_code)
         message
   | Basic_config.Json ->
       Printf.sprintf "%s\n" (Json.to_string (report_to_json ~is_error report))
@@ -190,24 +194,23 @@ let emit_report ~is_error report =
   output_string stderr (render_report ~is_error report)
 
 let emit_errors (x : t) =
-  iter_reports x (fun ~is_error report ->
-      if is_error then emit_report ~is_error:true report)
+  iter_reports x (fun ~is_error ->
+      fun report -> if is_error then emit_report ~is_error:true report)
 
 let check_diagnostics (x : t) =
   let has_error = ref false in
-  iter_reports x (fun ~is_error report ->
-      if is_error then has_error := true;
-      emit_report ~is_error report);
+  iter_reports x (fun ~is_error ->
+      fun report ->
+       if is_error then has_error := true;
+       emit_report ~is_error report);
   if !has_error then raise Fatal_error
 
 let reset (x : t) =
-  x.errors <- Report_set.empty;
+  x.errors <- Error_set.empty;
   x.warnings <- Warning_set.empty
 
-type error_option = report option
-
 let merge_into (dst : t) (src : t) =
-  dst.errors <- Report_set.union dst.errors src.errors;
+  dst.errors <- Error_set.union dst.errors src.errors;
   dst.warnings <- Warning_set.union dst.warnings src.warnings
 
 let remove_diagnostics_inside_loc (x : t) (loc : Loc.t) =
@@ -216,6 +219,6 @@ let remove_diagnostics_inside_loc (x : t) (loc : Loc.t) =
       (Loc.relation_of_loc loc l = Loc.Includes
       || Loc.relation_of_loc loc l = Loc.Equal)
   in
-  x.errors <- Report_set.filter x.errors (fun e -> not_in_loc e.loc);
+  x.errors <- Error_set.filter x.errors (fun e -> not_in_loc e.loc);
   x.warnings <- Warning_set.filter x.warnings (fun w -> not_in_loc w.loc);
   x.alerts <- Alert_set.filter x.alerts (fun a -> not_in_loc a.loc)

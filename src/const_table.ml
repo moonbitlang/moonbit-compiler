@@ -22,7 +22,9 @@ include struct
 
   let sexp_of_const_kind =
     (function
-     | Str -> S.Atom "Str" | Bytes -> S.Atom "Bytes" | Arr -> S.Atom "Arr"
+     | Str -> S.Atom "Str"
+     | Bytes -> S.Atom "Bytes"
+     | Arr -> S.Atom "Arr"
       : const_kind -> S.t)
 
   let _ = sexp_of_const_kind
@@ -30,9 +32,10 @@ include struct
   let _ = equal_const_kind
 
   let (hash_fold_const_kind : Ppx_base.state -> const_kind -> Ppx_base.state) =
-    (fun hsv arg ->
-       Ppx_base.hash_fold_int hsv
-         (match arg with Str -> 0 | Bytes -> 1 | Arr -> 2)
+    (fun hsv ->
+       fun arg ->
+        Ppx_base.hash_fold_int hsv
+          (match arg with Str -> 0 | Bytes -> 1 | Arr -> 2)
       : Ppx_base.state -> const_kind -> Ppx_base.state)
 
   let _ = hash_fold_const_kind
@@ -70,23 +73,25 @@ include struct
   let _ = sexp_of_const
 
   let equal_const =
-    (fun a__008_ b__009_ ->
-       if Stdlib.( == ) a__008_ b__009_ then true
-       else
-         Stdlib.( && )
-           (equal_const_kind a__008_.kind b__009_.kind)
-           (Stdlib.( = ) (a__008_.value : string) b__009_.value)
+    (fun a__008_ ->
+       fun b__009_ ->
+        if Stdlib.( == ) a__008_ b__009_ then true
+        else
+          Stdlib.( && )
+            (equal_const_kind a__008_.kind b__009_.kind)
+            (Stdlib.( = ) (a__008_.value : string) b__009_.value)
       : const -> const -> bool)
 
   let _ = equal_const
 
   let (hash_fold_const : Ppx_base.state -> const -> Ppx_base.state) =
-   fun hsv arg ->
-    let hsv =
-      let hsv = hsv in
-      hash_fold_const_kind hsv arg.kind
-    in
-    Ppx_base.hash_fold_string hsv arg.value
+   fun hsv ->
+    fun arg ->
+     let hsv =
+       let hsv = hsv in
+       hash_fold_const_kind hsv arg.kind
+     in
+     Ppx_base.hash_fold_string hsv arg.value
 
   let _ = hash_fold_const
 
@@ -139,44 +144,47 @@ let create () =
 
 let get_string_count (t : t) = Hash_string.length t.str_index_table
 
-let find_str_const (obj : t) (s : string) : int * int =
-  match Hash_string.find_opt obj.str_index_table s with
-  | Some index ->
-      let offset =
-        Hash_const.find_exn obj.offset_table { value = s; kind = Str }
-      in
-      (offset, index)
-  | None ->
-      let index = Hash_string.length obj.str_index_table in
-      let offset = obj.current_offset in
-      Hash_string.add obj.str_index_table s index;
-      Hash_const.add obj.offset_table { value = s; kind = Str } offset;
-      obj.current_offset <- obj.current_offset + String.length s;
-      Buffer.add_string obj.buf s;
-      (offset, index)
+let find_str_const (obj : t) (s : string) =
+  (match Hash_string.find_opt obj.str_index_table s with
+   | Some index ->
+       let offset =
+         Hash_const.find_exn obj.offset_table { value = s; kind = Str }
+       in
+       (offset, index)
+   | None ->
+       let index = Hash_string.length obj.str_index_table in
+       let offset = obj.current_offset in
+       Hash_string.add obj.str_index_table s index;
+       Hash_const.add obj.offset_table { value = s; kind = Str } offset;
+       obj.current_offset <- obj.current_offset + String.length s;
+       Buffer.add_string obj.buf s;
+       (offset, index)
+    : int * int)
 
-let find_js_builtin_str_const (obj : t) (s : string) : int =
-  match Hash_string.find_opt obj.str_index_table s with
-  | Some index -> index
-  | None ->
-      let index = Hash_string.length obj.str_index_table in
-      Hash_string.add obj.str_index_table s index;
-      index
+let find_js_builtin_str_const (obj : t) (s : string) =
+  (match Hash_string.find_opt obj.str_index_table s with
+   | Some index -> index
+   | None ->
+       let index = Hash_string.length obj.str_index_table in
+       Hash_string.add obj.str_index_table s index;
+       index
+    : int)
 
-let find_const (obj : t) (s : string) (kind : const_kind) : int =
-  let const = { kind; value = s } in
-  match Hash_const.find_opt obj.offset_table const with
-  | Some i -> i
-  | None ->
-      let offset = obj.current_offset in
-      let size = String.length s in
-      obj.current_offset <- obj.current_offset + size;
-      Buffer.add_string obj.buf s;
-      Hash_const.add obj.offset_table const offset;
-      offset
+let find_const (obj : t) (s : string) (kind : const_kind) =
+  (let const = { kind; value = s } in
+   match Hash_const.find_opt obj.offset_table const with
+   | Some i -> i
+   | None ->
+       let offset = obj.current_offset in
+       let size = String.length s in
+       obj.current_offset <- obj.current_offset + size;
+       Buffer.add_string obj.buf s;
+       Hash_const.add obj.offset_table const offset;
+       offset
+    : int)
 
-let find_array_const (obj : t) (s : string) : int = find_const obj s Arr
-let find_bytes_const (obj : t) (s : string) : int = find_const obj s Bytes
+let find_array_const (obj : t) (s : string) = (find_const obj s Arr : int)
+let find_bytes_const (obj : t) (s : string) = (find_const obj s Bytes : int)
 let to_wat_string (obj : t) = Buffer.contents obj.buf
 
 let iter_constant_string_with_index (t : t) (f : string -> int -> unit) =

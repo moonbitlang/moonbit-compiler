@@ -15,10 +15,11 @@
 
 type uchar = Uchar.t
 
-let uchar_to_string (c : Uchar.t) : string =
-  let buf = Buffer.create 4 in
-  Buffer.add_utf_8_uchar buf c;
-  Buffer.contents buf
+let uchar_to_string (c : Uchar.t) =
+  (let buf = Buffer.create 4 in
+   Buffer.add_utf_8_uchar buf c;
+   Buffer.contents buf
+    : string)
 
 let to_string (t : Uchar.t) = Printf.sprintf "U+%04X" (Uchar.to_int t)
 

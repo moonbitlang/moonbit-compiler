@@ -20,7 +20,6 @@ type scope = int
 
 type analyze_ctx = {
   depth_of_vars : scope Ident.Hash.t;
-  loop_info : Label.Hashset.t;
   need_transform : bool ref;
   depth : int;
 }
@@ -28,7 +27,6 @@ type analyze_ctx = {
 type transform_ctx = {
   depth_of_vars : scope Ident.Hash.t;
   fields_of_vars : (Ident.t * Stype.t) array Ident.Hash.t;
-  loop_info : Label.Hashset.t;
 }
 
 let analyze_stack_vars =
@@ -67,26 +65,6 @@ let analyze_stack_vars =
       | _ -> super#visit_Cexpr_mutate ctx record label field pos ty loc
 
     method! visit_var ctx var = Ident.Hash.remove ctx.depth_of_vars var
-
-    method! visit_Cexpr_loop ctx params body args label ty loc_ =
-      match params with
-      | { ty = T_constr { type_constructor = Tuple _; _ }; binder } :: [] ->
-          Label.Hashset.add ctx.loop_info label;
-          Ident.Hash.add ctx.depth_of_vars binder Int.max_int;
-          super#visit_Cexpr_loop ctx params body args label ty loc_;
-          if
-            Label.Hashset.mem ctx.loop_info label
-            && Ident.Hash.mem ctx.depth_of_vars binder
-          then ctx.need_transform := true
-          else Label.Hashset.remove ctx.loop_info label
-      | _ -> super#visit_Cexpr_loop ctx params body args label ty loc_
-
-    method! visit_Cexpr_continue ctx args label ty loc_ =
-      (if Label.Hashset.mem ctx.loop_info label then
-         match args with
-         | Cexpr_tuple _ :: [] -> ()
-         | _ -> Label.Hashset.remove ctx.loop_info label);
-      super#visit_Cexpr_continue ctx args label ty loc_
   end
 
 let transform =
@@ -102,7 +80,10 @@ let transform =
             Lst.map fields (fun { is_mut; pos; expr; label } ->
                 let name =
                   if Array.length field_vars = 1 then base_name
-                  else (base_name ^ "_" ^ label.label_name : Stdlib.String.t)
+                  else
+                    (base_name ^ "_" ^ label.label_name
+                      : Stdlib.String.t)
+                      [@merlin.hide]
                 in
                 let id =
                   if is_mut then Ident.fresh_mut name else Ident.fresh name
@@ -112,9 +93,11 @@ let transform =
           in
           Ident.Hash.add ctx.fields_of_vars name field_vars;
           let new_body = self#visit_expr ctx body in
-          Lst.fold_right2 new_vars fields new_body (fun var { expr; _ } body ->
-              let expr = self#visit_expr ctx expr in
-              Core.let_ var expr body)
+          Lst.fold_right2 new_vars fields new_body (fun var ->
+              fun { expr; _ } ->
+               fun body ->
+                let expr = self#visit_expr ctx expr in
+                Core.let_ var expr body)
       | _ -> super#visit_Cexpr_let ctx name rhs body ty loc
 
     method! visit_Cexpr_field ctx record accessor pos ty loc =
@@ -135,59 +118,6 @@ let transform =
               Core.assign ~loc (fst fields.(pos)) (self#visit_expr ctx field)
           | None -> super#visit_Cexpr_mutate ctx record label field pos ty loc)
       | _ -> super#visit_Cexpr_mutate ctx record label field pos ty loc
-
-    method! visit_Cexpr_loop ctx params body args label ty loc_ =
-      match params with
-      | {
-          ty = T_constr { type_constructor = Tuple n; tys } as ty_tuple;
-          binder;
-        }
-        :: [] ->
-          if
-            Label.Hashset.mem ctx.loop_info label
-            && Ident.Hash.mem ctx.depth_of_vars binder
-          then (
-            let base_name = Ident.base_name binder in
-            let field_vars = Array.make n (binder, Stype.unit) in
-            let new_params =
-              Lst.mapi tys (fun i ty : Core.param ->
-                  let name =
-                    (base_name ^ "_" ^ Int.to_string i : Stdlib.String.t)
-                  in
-                  let binder = Ident.fresh name in
-                  field_vars.(i) <- (binder, ty);
-                  { binder; ty; loc_ = Rloc.no_location })
-            in
-            Ident.Hash.add ctx.fields_of_vars binder field_vars;
-            match args with
-            | Cexpr_tuple { exprs; _ } :: [] ->
-                let args = Lst.map exprs (self#visit_expr ctx) in
-                Core.loop new_params (self#visit_expr ctx body) args label
-                  ~loc:loc_
-            | arg :: [] ->
-                Core.bind (self#visit_expr ctx arg) (fun id ->
-                    let args =
-                      Lst.mapi tys (fun i ty ->
-                          let var : Core.expr = Core.var id ~ty:ty_tuple in
-                          let index : Parsing_syntax.accessor =
-                            Index { tuple_index = i; loc_ = Rloc.no_location }
-                          in
-                          Core.field var ~ty ~pos:i index)
-                    in
-                    Core.loop new_params (self#visit_expr ctx body) args label
-                      ~loc:loc_)
-            | _ -> assert false)
-          else super#visit_Cexpr_loop ctx params body args label ty loc_
-      | _ -> super#visit_Cexpr_loop ctx params body args label ty loc_
-
-    method! visit_Cexpr_continue ctx args label ty loc_ =
-      if Label.Hashset.mem ctx.loop_info label then
-        match args with
-        | Cexpr_tuple { exprs; _ } :: [] ->
-            let new_args = Lst.map exprs (self#visit_expr ctx) in
-            Core.continue new_args label ty
-        | _ -> super#visit_Cexpr_continue ctx args label ty loc_
-      else super#visit_Cexpr_continue ctx args label ty loc_
   end
 
 let unbox_mut_records (prog : Core.program) =
@@ -195,7 +125,6 @@ let unbox_mut_records (prog : Core.program) =
       let analyze_ctx =
         {
           depth_of_vars = Ident.Hash.create 16;
-          loop_info = Label.Hashset.create 16;
           need_transform = ref false;
           depth = 0;
         }
@@ -206,7 +135,6 @@ let unbox_mut_records (prog : Core.program) =
           {
             depth_of_vars = analyze_ctx.depth_of_vars;
             fields_of_vars = Ident.Hash.create 16;
-            loop_info = analyze_ctx.loop_info;
           }
         in
         transform#visit_top_item transform_ctx top

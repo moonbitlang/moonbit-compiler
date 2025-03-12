@@ -70,7 +70,7 @@ let map_into_array f src =
     done;
     arr
 
-let map_into_list src f =
+let map_into_list src ~unorder:f =
   let src_len = src.len in
   let src_arr = src.arr in
   if src_len = 0 then []
@@ -92,15 +92,16 @@ let mapi f src =
     done;
     { len; arr }
 
-let equal eq x y : bool =
-  if x.len <> y.len then false
-  else
-    let rec aux x_arr y_arr i =
-      if i < 0 then true
-      else if eq x_arr.!(i) y_arr.!(i) then aux x_arr y_arr (i - 1)
-      else false
-    in
-    aux x.arr y.arr (x.len - 1)
+let equal eq x y =
+  (if x.len <> y.len then false
+   else
+     let rec aux x_arr y_arr i =
+       if i < 0 then true
+       else if eq x_arr.!(i) y_arr.!(i) then aux x_arr y_arr (i - 1)
+       else false
+     in
+     aux x.arr y.arr (x.len - 1)
+    : bool)
 
 let unsafe_get d i = d.arr.!(i)
 let last d = if d.len <= 0 then invalid_arg __FUNCTION__ else d.arr.!(d.len - 1)
@@ -136,9 +137,10 @@ let init len f =
     done;
     { len; arr }
 
-let make initsize : t =
-  if initsize < 0 then invalid_arg __FUNCTION__;
-  { len = 0; arr = Array.make initsize 0 }
+let make initsize =
+  (if initsize < 0 then invalid_arg __FUNCTION__;
+   { len = 0; arr = Array.make initsize 0 }
+    : t)
 
 let push (d : t) v =
   let d_len = d.len in
@@ -157,14 +159,15 @@ let push (d : t) v =
     d.len <- d_len + 1;
     d.arr.!(d_len) <- v)
 
-let get_and_delete_range (d : t) idx len : t =
-  let d_len = d.len in
-  if len < 0 || idx < 0 || idx + len > d_len then invalid_arg __FUNCTION__;
-  let arr = d.arr in
-  let value = unsafe_sub arr idx len in
-  unsafe_blit arr (idx + len) arr idx (d_len - idx - len);
-  d.len <- d_len - len;
-  { len; arr = value }
+let get_and_delete_range (d : t) idx len =
+  (let d_len = d.len in
+   if len < 0 || idx < 0 || idx + len > d_len then invalid_arg __FUNCTION__;
+   let arr = d.arr in
+   let value = unsafe_sub arr idx len in
+   unsafe_blit arr (idx + len) arr idx (d_len - idx - len);
+   d.len <- d_len - len;
+   { len; arr = value }
+    : t)
 
 let get d i =
   if i < 0 || i >= d.len then invalid_arg (__FUNCTION__ ^ " " ^ string_of_int i)
@@ -196,3 +199,9 @@ let arg_min (d : t) =
       index := i)
   done;
   !index
+
+let iteri d f =
+  let arr = d.arr in
+  for i = 0 to d.len - 1 do
+    f i arr.!(i)
+  done

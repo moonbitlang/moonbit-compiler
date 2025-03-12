@@ -22,37 +22,38 @@ type t = Stype.t array
 let make typ_instances = typ_instances
 let empty () = [||]
 
-let monofy_param (env : t) ~(index : int) : Type_path.t =
-  match Stype.type_repr env.!(index) with
-  | T_constr { type_constructor = p; tys = _ } -> p
-  | T_trait t -> t
-  | T_builtin b -> Stype.tpath_of_builtin b
-  | Tarrow _ | Tvar _ | Tparam _ | T_blackhole -> assert false
+let monofy_param (env : t) ~(index : int) =
+  (match Stype.type_repr env.!(index) with
+   | T_constr { type_constructor = p; tys = _ } -> p
+   | T_trait t -> t
+   | T_builtin b -> Stype.tpath_of_builtin b
+   | Tparam _ -> assert false
+   | Tarrow _ -> assert false
+   | Tvar _ -> assert false
+   | T_blackhole -> assert false
+    : Type_path.t)
 
-let monofy_typ (env : t) (t : Stype.t) : Stype.t =
-  let rec go (t : Stype.t) : Stype.t =
-    match Stype.type_repr t with
-    | Tarrow { params_ty; ret_ty; err_ty } ->
-        Tarrow
-          {
-            params_ty = gos params_ty;
-            ret_ty = go ret_ty;
-            generic_ = false;
-            err_ty = Option.map go err_ty;
-          }
-    | Tvar _ | T_blackhole -> assert false
-    | T_constr { type_constructor; tys; only_tag_enum_; is_suberror_ } ->
-        let tys = gos tys in
-        T_constr
-          {
-            type_constructor;
-            tys;
-            generic_ = false;
-            only_tag_enum_;
-            is_suberror_;
-          }
-    | T_trait _ as t -> t
-    | Tparam { index } -> env.!(index)
-    | T_builtin _ as t -> t
-  and gos (ts : Stype.t list) = Lst.map ts go in
-  go t
+let monofy_typ (env : t) (t : Stype.t) =
+  (let rec go (t : Stype.t) =
+     (match Stype.type_repr t with
+      | Tarrow { params_ty; ret_ty; err_ty; is_async } ->
+          Tarrow
+            {
+              params_ty = gos params_ty;
+              ret_ty = go ret_ty;
+              generic_ = false;
+              err_ty = Option.map go err_ty;
+              is_async;
+            }
+      | Tvar _ -> assert false
+      | T_blackhole -> assert false
+      | T_constr { type_constructor; tys; is_suberror_ } ->
+          let tys = gos tys in
+          T_constr { type_constructor; tys; generic_ = false; is_suberror_ }
+      | T_trait _ as t -> t
+      | Tparam { index } -> env.!(index)
+      | T_builtin _ as t -> t
+       : Stype.t)
+   and gos (ts : Stype.t list) = Lst.map ts go in
+   go t
+    : Stype.t)

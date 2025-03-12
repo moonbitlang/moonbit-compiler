@@ -15,9 +15,11 @@
 
 type 'a t = Ok of 'a | Partial of 'a * Diagnostics.report list
 
-let take_info (x : 'a t) ~(diagnostics : Diagnostics.t) : 'a =
-  match x with
-  | Ok a -> a
-  | Partial (a, err) ->
-      List.iter (fun info -> Diagnostics.add_error diagnostics info) err;
-      a
+let take_info (x : 'a t) ~(diagnostics : Diagnostics.t) =
+  (match x with
+   | Ok a -> a
+   | Partial (a, err) ->
+       Basic_lst.iter err ~f:(fun info ->
+           Diagnostics.add_error diagnostics info);
+       a
+    : 'a)

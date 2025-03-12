@@ -76,7 +76,7 @@ let range from to_ =
 let map2i f a b =
   let len = Array.length a in
   if len <> Array.length b then invalid_arg __FUNCTION__
-  else Array.mapi (fun i a -> f i a b.!(i)) a
+  else Array.mapi (fun i -> fun a -> f i a b.!(i)) a
 
 let rec tolist_f_aux a f i res =
   if i < 0 then res
@@ -225,11 +225,12 @@ let find_with_index arr cmp v =
   in
   aux 0 len
 
-let find_and_split arr cmp v : _ split =
-  let i = find_with_index arr cmp v in
-  if i < 0 then No_split
-  else
-    Split (Array.sub arr 0 i, Array.sub arr (i + 1) (Array.length arr - i - 1))
+let find_and_split arr cmp v =
+  (let i = find_with_index arr cmp v in
+   if i < 0 then No_split
+   else
+     Split (Array.sub arr 0 i, Array.sub arr (i + 1) (Array.length arr - i - 1))
+    : _ split)
 
 let exists a p =
   let n = Array.length a in

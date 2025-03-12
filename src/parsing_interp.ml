@@ -19,11 +19,12 @@ module Segment = Parsing_segment
 module Syntax = Parsing_syntax
 module Menhir_token = Lex_menhir_token
 module Parser = Parsing_parser
+module Parser_main = Parsing_main
 
 let menhir_parse ~loc_ ~diagnostics ~base segment =
   let lexbuf : Lexing.lexbuf = Lexing.from_string "" in
-  let lexer (lexbuf : Lexing.lexbuf) : Menhir_token.token =
-    Segment.next_with_lexbuf_update segment lexbuf
+  let lexer (lexbuf : Lexing.lexbuf) =
+    (Segment.next_with_lexbuf_update segment lexbuf : Menhir_token.token)
   in
   Parsing_menhir_state.initialize_base_pos base;
   try Parser.expression lexer lexbuf
@@ -41,9 +42,20 @@ let expr_of_interp ~diagnostics ~base ({ source; loc_ } : Literal.interp_source)
       ~name:start_pos.pos_fname source ~comment:false ~diagnostics
   in
   let segment =
-    match Segment.toplevel_segments tokens with
+    match Toplevel_segments.toplevel_segments tokens with
     | segment :: [] -> segment
     | _ -> assert false
   in
   let loc_ = Rloc.of_loc ~base loc_ in
-  menhir_parse ~loc_ ~diagnostics ~base segment
+  match Basic_config.current_parser () with
+  | `Menhir -> menhir_parse ~loc_ ~diagnostics ~base segment
+  | `Handrolled -> Parser_main.parse_expression ~diagnostics segment
+  | `Both ->
+      let menhir_diag = Diagnostics.make () in
+      let menhir_ast =
+        menhir_parse ~loc_ ~diagnostics:menhir_diag ~base segment
+      in
+      if not (Diagnostics.has_fatal_errors menhir_diag) then (
+        Diagnostics.merge_into diagnostics menhir_diag;
+        menhir_ast)
+      else Parser_main.parse_expression ~diagnostics segment

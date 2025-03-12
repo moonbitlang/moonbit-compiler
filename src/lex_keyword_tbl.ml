@@ -34,6 +34,7 @@ let keyword_tbl =
       ("struct", STRUCT);
       ("enum", ENUM);
       ("trait", TRAIT);
+      ("traitalias", TRAITALIAS);
       ("derive", DERIVE);
       ("while", WHILE);
       ("break", BREAK);
@@ -57,6 +58,8 @@ let keyword_tbl =
       ("impl", IMPL);
       ("with", WITH);
       ("guard", GUARD);
+      ("async", ASYNC);
+      ("is", IS);
     ]
 
 let reserved =
@@ -70,7 +73,6 @@ let reserved =
       "unsafe";
       "use";
       "where";
-      "async";
       "await";
       "dyn";
       "abstract";
@@ -84,6 +86,7 @@ let reserved =
       "local";
       "method";
       "alias";
+      "assert";
     |]
 
 let find_opt lexeme = KeyTbl.find_opt keyword_tbl lexeme

@@ -16,123 +16,94 @@
 module Lst = Basic_lst
 module Ident = Basic_core_ident
 
-let not_in (ident : Ident.t) (expr : Core.expr) =
-  let rec go : Core.expr -> bool = function
-    | Cexpr_break { arg; _ } -> (
-        match arg with None -> true | Some arg -> go arg)
-    | Cexpr_continue { args; _ } -> Lst.for_all args go
-    | Cexpr_loop { body; args; _ } -> Lst.for_all args go && go body
-    | Cexpr_const _ | Cexpr_unit _ -> true
-    | Cexpr_var { id; _ } -> not (Ident.equal id ident)
-    | Cexpr_as { expr; _ }
-    | Cexpr_assign { expr; _ }
-    | Cexpr_field { record = expr; _ } ->
-        go expr
-    | Cexpr_array { exprs = args; _ }
-    | Cexpr_tuple { exprs = args; _ }
-    | Cexpr_prim { args; _ } ->
-        Lst.for_all args go
-    | Cexpr_sequence { expr1; expr2; _ }
-    | Cexpr_mutate { record = expr1; field = expr2; _ } ->
-        go expr1 && go expr2
-    | Cexpr_let { name; rhs; body; _ } ->
-        Ident.equal name ident || (go rhs && go body)
-    | Cexpr_function { func; _ } -> go func.body
-    | Cexpr_apply { func; args; _ } ->
-        (not (Ident.equal func ident)) && Lst.for_all args go
-    | Cexpr_letrec { bindings; body; _ } ->
-        Lst.for_all bindings (fun (binder, fn) ->
-            Ident.equal binder ident || go fn.body)
-        && go body
-    | Cexpr_letfn { name; fn; body; _ } ->
-        Ident.equal name ident || (go fn.body && go body)
-    | Cexpr_constr { args; _ } -> Lst.for_all args go
-    | Cexpr_record { fields; _ } -> Lst.for_all fields (fun def -> go def.expr)
-    | Cexpr_record_update { record; fields; _ } ->
-        go record && Lst.for_all fields (fun def -> go def.expr)
-    | Cexpr_if { cond; ifso; ifnot; _ } -> (
-        go cond && go ifso && match ifnot with None -> true | Some e -> go e)
-    | Cexpr_switch_constr { obj; cases; default; _ } -> (
-        go obj
-        && Lst.for_all cases (fun (_, binder, expr) ->
-               (match binder with
-               | None -> false
-               | Some binder -> Ident.equal binder ident)
-               || go expr)
-        && match default with None -> true | Some default -> go default)
-    | Cexpr_switch_constant { obj; cases; default; _ } ->
-        go obj && Lst.for_all cases (fun (_, expr) -> go expr) && go default
-    | Cexpr_handle_error { obj; handle_kind = _; ty = _ } -> go obj
-    | Cexpr_return { expr; _ } -> go expr
-  in
-  go expr
-
 type contify_result =
   | Never_called
   | Contifiable
   | Not_contifiable of { tail_called : bool }
 
-let is_contifiable (ident : Ident.t) (expr : Core.expr) =
+let is_contifiable (ident : Ident.t) (expr : Core.expr) ~treat_return_as_tail =
   let has_other_occurence = ref false in
   let tail_called = ref false in
-  let rec analyze_usage (expr : Core.expr) =
-    let got expr =
-      if (not !has_other_occurence) || not !tail_called then analyze_usage expr
-        [@@inline]
-    in
+  let rec analyze_usage (expr : Core.expr) ~is_tail ~in_nested_call =
+    let got expr = analyze_usage expr ~is_tail ~in_nested_call [@@inline] in
     let gon expr =
-      if not !has_other_occurence then
-        has_other_occurence := not (not_in ident expr)
+      analyze_usage expr ~is_tail:false ~in_nested_call
         [@@inline]
     in
-    match expr with
-    | Cexpr_apply { func; args; _ } when Ident.equal func ident ->
-        Lst.iter args gon;
-        tail_called := true
-    | Cexpr_let { name = _; rhs; body; _ } ->
-        gon rhs;
-        got body
-    | Cexpr_letrec { bindings; body; _ } ->
-        Lst.iter bindings (fun (_, fn) -> gon fn.body);
-        got body
-    | Cexpr_letfn { name = _; fn; body; kind; _ } -> (
-        match kind with
-        | Tail_join | Nontail_join ->
-            got fn.body;
-            got body
-        | Nonrec | Rec ->
-            gon fn.body;
-            got body)
-    | Cexpr_if { cond; ifso; ifnot; _ } -> (
-        gon cond;
-        got ifso;
-        match ifnot with None -> () | Some e -> got e)
-    | Cexpr_sequence { expr1; expr2; _ } ->
-        gon expr1;
-        got expr2
-    | Cexpr_switch_constr { obj; cases; default; _ } -> (
-        gon obj;
-        Lst.iter cases (fun (_, _, expr) -> got expr);
-        match default with None -> () | Some default -> got default)
-    | Cexpr_switch_constant { obj; cases; default; _ } ->
-        gon obj;
-        Lst.iter cases (fun (_, expr) -> got expr);
-        got default
-    | Cexpr_prim { prim = Psequand | Psequor; args = [ expr1; expr2 ]; ty = _ }
-      ->
-        gon expr1;
-        got expr2
-    | Cexpr_loop { body; args; _ } ->
-        Lst.iter args gon;
-        got body
-    | Cexpr_return _ | Cexpr_break _ | Cexpr_tuple _ | Cexpr_constr _
-    | Cexpr_record _ | Cexpr_record_update _ | Cexpr_field _ | Cexpr_mutate _
-    | Cexpr_array _ | Cexpr_assign _ | Cexpr_continue _ | Cexpr_const _
-    | Cexpr_unit _ | Cexpr_var _ | Cexpr_function _ | Cexpr_prim _
-    | Cexpr_apply _ | Cexpr_as _ | Cexpr_handle_error _ ->
-        gon expr
+    if (not !has_other_occurence) || not !tail_called then
+      match expr with
+      | Cexpr_apply { func; args; _ } when Ident.equal func ident ->
+          if is_tail then tail_called := true else has_other_occurence := true;
+          Lst.iter args ~f:gon
+      | Cexpr_let { name = _; rhs; body; _ } ->
+          gon rhs;
+          got body
+      | Cexpr_letrec { bindings; body; _ } ->
+          Lst.iter bindings ~f:(fun (_, fn) ->
+              analyze_usage ~in_nested_call:true ~is_tail:false fn.body);
+          got body
+      | Cexpr_letfn { name = _; fn; body; kind; _ } -> (
+          match kind with
+          | Tail_join | Nontail_join ->
+              got fn.body;
+              got body
+          | Nonrec | Rec ->
+              analyze_usage ~in_nested_call:true ~is_tail:false fn.body;
+              got body)
+      | Cexpr_function { func; _ } ->
+          analyze_usage ~in_nested_call:true ~is_tail:false func.body
+      | Cexpr_if { cond; ifso; ifnot; _ } -> (
+          gon cond;
+          got ifso;
+          match ifnot with None -> () | Some e -> got e)
+      | Cexpr_sequence { exprs; last_expr; _ } ->
+          Lst.iter exprs ~f:gon;
+          got last_expr
+      | Cexpr_switch_constr { obj; cases; default; _ } -> (
+          gon obj;
+          Lst.iter cases ~f:(fun (_, _, expr) -> got expr);
+          match default with None -> () | Some default -> got default)
+      | Cexpr_switch_constant { obj; cases; default; _ } ->
+          gon obj;
+          Lst.iter cases ~f:(fun (_, expr) -> got expr);
+          got default
+      | Cexpr_and { lhs; rhs; _ } | Cexpr_or { lhs; rhs; _ } ->
+          gon lhs;
+          got rhs
+      | Cexpr_loop { body; args; _ } ->
+          Lst.iter args ~f:gon;
+          got body
+      | Cexpr_return { expr; _ } ->
+          if treat_return_as_tail && not in_nested_call then
+            analyze_usage expr ~is_tail:true ~in_nested_call:false
+          else gon expr
+      | Cexpr_break { arg; _ } -> (
+          match arg with None -> () | Some arg -> gon arg)
+      | Cexpr_tuple { exprs = args; _ }
+      | Cexpr_constr { args; _ }
+      | Cexpr_array { exprs = args; _ }
+      | Cexpr_continue { args; _ }
+      | Cexpr_prim { args; _ }
+      | Cexpr_apply { args; _ } ->
+          Lst.iter args ~f:gon
+      | Cexpr_record { fields; _ } ->
+          Lst.iter fields ~f:(fun def -> gon def.expr)
+      | Cexpr_record_update { record; fields; _ } ->
+          gon record;
+          Lst.iter fields ~f:(fun def -> gon def.expr)
+      | Cexpr_field { record = expr; _ }
+      | Cexpr_assign { expr; _ }
+      | Cexpr_as { expr; _ }
+      | Cexpr_handle_error { obj = expr; _ } ->
+          gon expr
+      | Cexpr_mutate { record; field; _ } ->
+          gon record;
+          gon field
+      | Cexpr_const _ | Cexpr_unit _ -> ()
+      | Cexpr_var { id; _ } ->
+          if Ident.equal id ident then has_other_occurence := true
   in
-  analyze_usage expr;
+  analyze_usage expr ~is_tail:true ~in_nested_call:false;
   if !has_other_occurence then Not_contifiable { tail_called = !tail_called }
   else if !tail_called then Contifiable
   else Never_called
@@ -146,79 +117,120 @@ let apply2joinapply ident join body =
         match kind with
         | Normal _ when Ident.equal func ident ->
             Core.apply ~loc:loc_ ~ty_args_ ~kind:Join ~ty ~prim join
-              (List.map (self#visit_expr ()) args)
+              (Lst.map args (self#visit_expr ()))
         | _ -> super#visit_Cexpr_apply () func args kind ty ty_args_ prim loc_
     end
   in
   map#visit_expr () body
 
-let rec tail_apply2continue ident label (expr : Core.expr) =
-  let go expr = tail_apply2continue ident label expr [@@inline] in
-  match expr with
-  | Cexpr_apply { func; args; ty; loc_; kind = _; prim = _ }
-    when Ident.equal func ident ->
-      Core.continue ~loc:loc_ args label ty
-  | Cexpr_let { name; rhs; body; ty = _; loc_ } ->
-      Core.let_ ~loc:loc_ name rhs (go body)
-  | Cexpr_letrec { bindings; body; ty = _; loc_ } ->
-      Core.letrec ~loc:loc_ bindings body
-  | Cexpr_letfn { name; fn; body; kind; ty = _; loc_ } -> (
-      match kind with
-      | Tail_join | Nontail_join ->
-          Core.letfn ~loc:loc_ ~kind name
-            { fn with body = go fn.body }
-            (go body)
-      | Nonrec | Rec -> Core.letfn ~loc:loc_ ~kind name fn (go body))
-  | Cexpr_if { cond; ifso; ifnot; ty = _; loc_ } ->
-      Core.if_ ~loc:loc_ cond ~ifso:(go ifso) ?ifnot:(Option.map go ifnot)
-  | Cexpr_sequence { expr1; expr2; ty = _; loc_ } ->
-      Core.sequence ~loc:loc_ expr1 (go expr2)
-  | Cexpr_switch_constr { obj; cases; default; ty = _; loc_ } ->
-      Core.switch_constr ~loc:loc_ ~default:(Option.map go default) obj
-        (Lst.map cases (fun (tag, binder, action) -> (tag, binder, go action)))
-  | Cexpr_switch_constant { obj; cases; default; ty = _; loc_ } ->
-      Core.switch_constant ~loc:loc_ ~default:(go default) obj
-        (Lst.map cases (fun (c, action) -> (c, go action)))
-  | Cexpr_prim
-      { prim = (Psequand | Psequor) as prim; args = [ expr1; expr2 ]; ty; loc_ }
-    ->
-      Core.prim ~loc:loc_ ~ty prim [ expr1; go expr2 ]
-  | Cexpr_loop { params; body; args; label; ty = _; loc_ } ->
-      Core.loop ~loc:loc_ params (go body) args label
-  | Cexpr_return _ | Cexpr_break _ | Cexpr_tuple _ | Cexpr_constr _
-  | Cexpr_record _ | Cexpr_record_update _ | Cexpr_field _ | Cexpr_mutate _
-  | Cexpr_array _ | Cexpr_assign _ | Cexpr_continue _ | Cexpr_const _
-  | Cexpr_unit _ | Cexpr_var _ | Cexpr_function _ | Cexpr_prim _ | Cexpr_apply _
-  | Cexpr_as _ | Cexpr_handle_error _ ->
-      expr
+let tail_apply2continue ident label (expr : Core.expr) =
+  let rec go (expr : Core.expr) ~is_tail =
+    let got expr = go expr ~is_tail [@@inline] in
+    let gon expr = go expr ~is_tail:false [@@inline] in
+    match expr with
+    | Cexpr_apply { func; args; ty; loc_; kind; prim; ty_args_ } ->
+        if is_tail && Ident.equal func ident then
+          Core.continue ~loc:loc_ (Lst.map args gon) label ty
+        else
+          Core.apply ~loc:loc_ ~ty_args_ ~kind ~ty ~prim func (Lst.map args gon)
+    | Cexpr_let { name; rhs; body; ty = _; loc_ } ->
+        Core.let_ ~loc:loc_ name (gon rhs) (got body)
+    | Cexpr_letrec { bindings; body; ty = _; loc_ } ->
+        Core.letrec ~loc:loc_ bindings (got body)
+    | Cexpr_letfn { name; fn; body; kind; ty = _; loc_ } -> (
+        match kind with
+        | Tail_join | Nontail_join ->
+            Core.letfn ~loc:loc_ ~kind name
+              { fn with body = got fn.body }
+              (got body)
+        | Nonrec | Rec -> Core.letfn ~loc:loc_ ~kind name fn (got body))
+    | Cexpr_if { cond; ifso; ifnot; ty = _; loc_ } ->
+        Core.if_ ~loc:loc_ (gon cond) ~ifso:(got ifso)
+          ?ifnot:(Option.map got ifnot)
+    | Cexpr_sequence { exprs; last_expr; ty = _; loc_ } ->
+        Core.sequence ~loc:loc_ (Lst.map exprs gon) (got last_expr)
+    | Cexpr_switch_constr { obj; cases; default; ty = _; loc_ } ->
+        Core.switch_constr ~loc:loc_ ~default:(Option.map got default) (gon obj)
+          (Lst.map cases (fun (tag, binder, action) ->
+               (tag, binder, got action)))
+    | Cexpr_switch_constant { obj; cases; default; ty = _; loc_ } ->
+        Core.switch_constant ~loc:loc_ ~default:(got default) (gon obj)
+          (Lst.map cases (fun (c, action) -> (c, got action)))
+    | Cexpr_and { lhs; rhs; loc_ } -> Core.and_ ~loc:loc_ (gon lhs) (got rhs)
+    | Cexpr_or { lhs; rhs; loc_ } -> Core.or_ ~loc:loc_ (gon lhs) (got rhs)
+    | Cexpr_loop { params; body; args; label; ty = _; loc_ } ->
+        Core.loop ~loc:loc_ params (got body) (Lst.map args gon) label
+    | Cexpr_return { expr; return_kind; ty; loc_ } ->
+        Core.return ~loc:loc_ ~return_kind ~ty (go expr ~is_tail:true)
+    | Cexpr_break { arg; loc_; label; ty } ->
+        Core.break ~loc_ (Option.map got arg) label ty
+    | Cexpr_tuple { exprs; loc_; ty } ->
+        Core.tuple ~loc:loc_ ~ty (Lst.map exprs gon)
+    | Cexpr_constr { tag; args; loc_; ty } ->
+        Core.constr ~loc:loc_ ~ty tag (Lst.map args gon)
+    | Cexpr_record { fields; loc_; ty } ->
+        Core.record ~loc:loc_ ~ty
+          (Lst.map fields (fun def -> { def with expr = gon def.expr }))
+    | Cexpr_record_update { record; fields; fields_num; loc_; ty = _ } ->
+        Core.record_update ~loc:loc_ record
+          (Lst.map fields (fun def -> { def with expr = gon def.expr }))
+          fields_num
+    | Cexpr_field { record; accessor; pos; loc_; ty } ->
+        Core.field ~loc:loc_ ~ty ~pos (gon record) accessor
+    | Cexpr_mutate { record; label; field; pos; loc_; ty = _ } ->
+        Core.mutate ~loc:loc_ ~pos (gon record) label (gon field)
+    | Cexpr_array { exprs; loc_; ty } ->
+        Core.array ~loc:loc_ ~ty (Lst.map exprs gon)
+    | Cexpr_assign { var; expr; loc_; ty = _ } ->
+        Core.assign ~loc:loc_ var (gon expr)
+    | Cexpr_continue { args; loc_; label; ty } ->
+        Core.continue ~loc:loc_ args label ty
+    | Cexpr_const _ | Cexpr_unit _ | Cexpr_var _ | Cexpr_function _ -> expr
+    | Cexpr_prim { prim; args; ty; loc_ } ->
+        Core.prim ~loc:loc_ ~ty prim (Lst.map args gon)
+    | Cexpr_as { expr; trait; obj_type; loc_ } ->
+        Core.as_ ~loc:loc_ (gon expr) ~trait ~obj_type
+    | Cexpr_handle_error { obj; handle_kind; ty; loc_ } ->
+        Core.handle_error ~loc:loc_ (gon obj) handle_kind ~ty
+  in
+  go expr ~is_tail:true
 
-let loopify (ident : Ident.t) (params : Core.param list) (body : Core.expr) :
-    Core.fn =
-  let label = Label.fresh (Ident.base_name ident) in
-  let fresh_params =
-    Lst.map params (fun p -> { p with binder = Ident.rename p.binder })
-  in
-  let args =
-    Lst.map fresh_params (fun { binder = id; ty; loc_ } ->
-        Core.var ~loc:loc_ ~ty id)
-  in
-  {
-    params = fresh_params;
-    body =
-      Core.loop ~loc:(Core.loc_of_expr body) params
-        (tail_apply2continue ident label body)
-        args label;
-  }
+let loopify (ident : Ident.t) (params : Core.param list) (body : Core.expr)
+    ~is_async =
+  (let label = Label.fresh (Ident.base_name ident) in
+   let fresh_params =
+     Lst.map params (fun p -> { p with binder = Ident.rename p.binder })
+   in
+   let args =
+     Lst.map fresh_params (fun { binder = id; ty; loc_ } ->
+         Core.var ~loc:loc_ ~ty id)
+   in
+   {
+     params = fresh_params;
+     body =
+       Core.loop ~loc:(Core.loc_of_expr body) params
+         (tail_apply2continue ident label body)
+         args label;
+     is_async;
+   }
+    : Core.fn)
+
+let transform_return (fn : Core.fn) =
+  { fn with body = Core_util.transform_return_in_fn_body fn.body }
 
 let contifier =
   (object (self)
      inherit [_] Core.Map.map as super
 
      method! visit_Ctop_fn () ({ binder; func; _ } as decl) =
-       match is_contifiable binder func.body with
+       match is_contifiable binder func.body ~treat_return_as_tail:true with
        | Contifiable | Not_contifiable { tail_called = true } ->
            super#visit_Ctop_fn ()
-             { decl with func = loopify binder func.params func.body }
+             {
+               decl with
+               func =
+                 loopify binder func.params func.body ~is_async:func.is_async;
+             }
        | Never_called | Not_contifiable { tail_called = false } ->
            super#visit_Ctop_fn () decl
 
@@ -227,7 +239,7 @@ let contifier =
        let body = self#visit_expr () body in
        match kind with
        | Nonrec -> (
-           match is_contifiable name body with
+           match is_contifiable name body ~treat_return_as_tail:false with
            | Contifiable ->
                let body = apply2joinapply name name body in
                Core.joinlet_tail ~loc:loc_ name fn.params
@@ -236,26 +248,24 @@ let contifier =
            | Never_called -> body
            | Not_contifiable _ -> Core.letfn ~loc:loc_ ~kind name fn body)
        | Rec -> (
-           match is_contifiable name fn.body with
+           match is_contifiable name fn.body ~treat_return_as_tail:true with
            | Contifiable -> (
-               match is_contifiable name body with
+               match is_contifiable name body ~treat_return_as_tail:false with
                | Contifiable ->
                    let fn =
-                     loopify name fn.params
-                       (Core_util.transform_return_in_fn_body fn.body)
+                     transform_return
+                       (loopify name fn.params fn.body ~is_async:fn.is_async)
                    in
                    let body = apply2joinapply name name body in
                    Core.letfn ~loc:loc_ ~kind:Tail_join name fn body
                | Never_called -> body
-               | Not_contifiable { tail_called = true } ->
-                   Core.letfn ~loc:loc_ ~kind:Rec name
-                     (loopify name fn.params fn.body)
-                     body
-               | Not_contifiable { tail_called = false } ->
-                   Core.letfn ~loc:loc_ ~kind:Rec name fn body)
+               | Not_contifiable _ ->
+                   Core.letfn ~loc:loc_ ~kind:Nonrec name
+                     (loopify name fn.params fn.body ~is_async:fn.is_async)
+                     body)
            | Not_contifiable { tail_called = true } ->
                Core.letfn ~loc:loc_ ~kind:Rec name
-                 (loopify name fn.params fn.body)
+                 (loopify name fn.params fn.body ~is_async:fn.is_async)
                  body
            | Never_called -> Core.letfn ~loc:loc_ ~kind:Nonrec name fn body
            | Not_contifiable { tail_called = false } ->

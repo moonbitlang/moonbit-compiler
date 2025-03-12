@@ -20,6 +20,8 @@ type impl = {
   self_ty : Stype.t;
   ty_params : Tvar_env.t;
   is_pub : bool;
+  is_implicit_ : bool; [@sexp_drop_if fun x -> not x]
+  doc_ : Docstring.t;
   loc_ : Loc.t;
 }
 
@@ -27,17 +29,31 @@ include struct
   let _ = fun (_ : impl) -> ()
 
   let sexp_of_impl =
-    (fun {
+    (let (drop_if__011_ : bool -> Stdlib.Bool.t) = fun x -> not x in
+     fun {
            trait = trait__002_;
            self_ty = self_ty__004_;
            ty_params = ty_params__006_;
            is_pub = is_pub__008_;
-           loc_ = loc___010_;
+           is_implicit_ = is_implicit___012_;
+           doc_ = doc___015_;
+           loc_ = loc___017_;
          } ->
        let bnds__001_ = ([] : _ Stdlib.List.t) in
        let bnds__001_ =
-         let arg__011_ = Loc.sexp_of_t loc___010_ in
-         (S.List [ S.Atom "loc_"; arg__011_ ] :: bnds__001_ : _ Stdlib.List.t)
+         let arg__018_ = Loc.sexp_of_t loc___017_ in
+         (S.List [ S.Atom "loc_"; arg__018_ ] :: bnds__001_ : _ Stdlib.List.t)
+       in
+       let bnds__001_ =
+         let arg__016_ = Docstring.sexp_of_t doc___015_ in
+         (S.List [ S.Atom "doc_"; arg__016_ ] :: bnds__001_ : _ Stdlib.List.t)
+       in
+       let bnds__001_ =
+         if drop_if__011_ is_implicit___012_ then bnds__001_
+         else
+           let arg__014_ = Moon_sexp_conv.sexp_of_bool is_implicit___012_ in
+           let bnd__013_ = S.List [ S.Atom "is_implicit_"; arg__014_ ] in
+           (bnd__013_ :: bnds__001_ : _ Stdlib.List.t)
        in
        let bnds__001_ =
          let arg__009_ = Moon_sexp_conv.sexp_of_bool is_pub__008_ in
@@ -70,31 +86,33 @@ module H = Basic_hashf.Make (struct
     let _ = fun (_ : t) -> ()
 
     let sexp_of_t =
-      (fun (arg0__012_, arg1__013_) ->
-         let res0__014_ = Type_path.sexp_of_t arg0__012_
-         and res1__015_ = Type_path.sexp_of_t arg1__013_ in
-         S.List [ res0__014_; res1__015_ ]
+      (fun (arg0__019_, arg1__020_) ->
+         let res0__021_ = Type_path.sexp_of_t arg0__019_
+         and res1__022_ = Type_path.sexp_of_t arg1__020_ in
+         S.List [ res0__021_; res1__022_ ]
         : t -> S.t)
 
     let _ = sexp_of_t
 
     let equal =
-      (fun a__016_ b__017_ ->
-         let t__018_, t__019_ = a__016_ in
-         let t__020_, t__021_ = b__017_ in
-         Stdlib.( && )
-           (Type_path.equal t__018_ t__020_)
-           (Type_path.equal t__019_ t__021_)
+      (fun a__023_ ->
+         fun b__024_ ->
+          let t__025_, t__026_ = a__023_ in
+          let t__027_, t__028_ = b__024_ in
+          Stdlib.( && )
+            (Type_path.equal t__025_ t__027_)
+            (Type_path.equal t__026_ t__028_)
         : t -> t -> bool)
 
     let _ = equal
 
     let (hash_fold_t : Ppx_base.state -> t -> Ppx_base.state) =
-     fun hsv arg ->
-      let e0, e1 = arg in
-      let hsv = Type_path.hash_fold_t hsv e0 in
-      let hsv = Type_path.hash_fold_t hsv e1 in
-      hsv
+     fun hsv ->
+      fun arg ->
+       let e0, e1 = arg in
+       let hsv = Type_path.hash_fold_t hsv e0 in
+       let hsv = Type_path.hash_fold_t hsv e1 in
+       hsv
 
     let _ = hash_fold_t
 
@@ -114,7 +132,7 @@ type t = impl H.t
 
 include struct
   let _ = fun (_ : t) -> ()
-  let sexp_of_t = (fun x__022_ -> H.sexp_of_t sexp_of_impl x__022_ : t -> S.t)
+  let sexp_of_t = (fun x__029_ -> H.sexp_of_t sexp_of_impl x__029_ : t -> S.t)
   let _ = sexp_of_t
 end
 
@@ -128,7 +146,7 @@ let update (impls : t) ~trait ~type_name f =
   H.update_if_exists impls (trait, type_name) f
 
 let iter (impls : t) f =
-  H.iter2 impls (fun (trait, type_name) impl -> f ~trait ~type_name impl)
+  H.iter2 impls (fun (trait, type_name) -> fun impl -> f ~trait ~type_name impl)
 
 let get_pub_impls (impls : t) =
   H.to_array_filter_map impls (fun (_, impl) ->

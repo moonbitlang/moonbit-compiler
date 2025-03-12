@@ -26,10 +26,10 @@ let resolve_source self ~pkg ~file:path =
     match rev_parts with
     | [] -> path
     | last :: rest -> (
-        let pkg = String.concat "/" (rev_parts |> List.rev) in
+        let pkg = String.concat "/" (List.rev rev_parts) in
         match H.find_opt self pkg with
         | Some src_dir -> Filename.concat src_dir path
         | None -> find rest (Filename.concat last path))
   in
-  let rev_parts = String.split_on_char '/' pkg |> List.rev in
+  let rev_parts = List.rev (String.split_on_char '/' pkg) in
   find rev_parts path

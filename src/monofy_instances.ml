@@ -33,7 +33,8 @@ include struct
            types = types__002_;
            binder = binder__004_;
            old_binder = old_binder__006_;
-         } ->
+         }
+     ->
        let bnds__001_ = ([] : _ Stdlib.List.t) in
        let bnds__001_ =
          let arg__007_ = Basic_qual_ident.sexp_of_t old_binder__006_ in
@@ -59,9 +60,10 @@ include struct
   and _ = sexp_of_t
 end
 
-let find_item (items : t) (tys : Type_args.t) : Ident.t option =
-  Lst.find_opt items (fun item ->
-      if Type_args.equal tys item.types then Some item.binder else None)
+let find_item (items : t) (tys : Type_args.t) =
+  (Lst.find_opt items (fun item ->
+       if Type_args.equal tys item.types then Some item.binder else None)
+    : Ident.t option)
 
-let has_type_args (items : t) (tys : Type_args.t) : bool =
-  Lst.exists items (fun item -> Type_args.equal tys item.types)
+let has_type_args (items : t) (tys : Type_args.t) =
+  (Lst.exists items (fun item -> Type_args.equal tys item.types) : bool)

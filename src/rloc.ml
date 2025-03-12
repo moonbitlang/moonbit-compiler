@@ -21,13 +21,13 @@ include struct
   let _ = sexp_of_rpos
 
   let compare_rpos =
-    (fun a__001_ b__002_ -> Stdlib.compare (a__001_ : int) b__002_
+    (fun a__001_ -> fun b__002_ -> Stdlib.compare (a__001_ : int) b__002_
       : rpos -> rpos -> int)
 
   let _ = compare_rpos
 
   let equal_rpos =
-    (fun a__003_ b__004_ -> Stdlib.( = ) (a__003_ : int) b__004_
+    (fun a__003_ -> fun b__004_ -> Stdlib.( = ) (a__003_ : int) b__004_
       : rpos -> rpos -> bool)
 
   let _ = equal_rpos
@@ -58,23 +58,25 @@ include struct
   let _ = sexp_of_t
 
   let compare =
-    (fun a__010_ b__011_ ->
-       if Stdlib.( == ) a__010_ b__011_ then 0
-       else
-         match compare_rpos a__010_.start b__011_.start with
-         | 0 -> compare_rpos a__010_._end b__011_._end
-         | n -> n
+    (fun a__010_ ->
+       fun b__011_ ->
+        if Stdlib.( == ) a__010_ b__011_ then 0
+        else
+          match compare_rpos a__010_.start b__011_.start with
+          | 0 -> compare_rpos a__010_._end b__011_._end
+          | n -> n
       : t -> t -> int)
 
   let _ = compare
 
   let equal =
-    (fun a__012_ b__013_ ->
-       if Stdlib.( == ) a__012_ b__013_ then true
-       else
-         Stdlib.( && )
-           (equal_rpos a__012_.start b__013_.start)
-           (equal_rpos a__012_._end b__013_._end)
+    (fun a__012_ ->
+       fun b__013_ ->
+        if Stdlib.( == ) a__012_ b__013_ then true
+        else
+          Stdlib.( && )
+            (equal_rpos a__012_.start b__013_.start)
+            (equal_rpos a__012_._end b__013_._end)
       : t -> t -> bool)
 
   let _ = equal
@@ -89,38 +91,41 @@ include struct
 
   let sexp_of_loced : 'a. ('a -> S.t) -> 'a loced -> S.t =
     let (drop_if__019_ : t -> Stdlib.Bool.t) = hide_loc in
-    fun _of_a__014_ { v = v__016_; loc_ = loc___020_ } ->
-      let bnds__015_ = ([] : _ Stdlib.List.t) in
-      let bnds__015_ =
-        if drop_if__019_ loc___020_ then bnds__015_
-        else
-          let arg__022_ = sexp_of_t loc___020_ in
-          let bnd__021_ = S.List [ S.Atom "loc_"; arg__022_ ] in
-          (bnd__021_ :: bnds__015_ : _ Stdlib.List.t)
-      in
-      let bnds__015_ =
-        let arg__017_ = _of_a__014_ v__016_ in
-        (S.List [ S.Atom "v"; arg__017_ ] :: bnds__015_ : _ Stdlib.List.t)
-      in
-      S.List bnds__015_
+    fun _of_a__014_ ->
+      fun { v = v__016_; loc_ = loc___020_ } ->
+       let bnds__015_ = ([] : _ Stdlib.List.t) in
+       let bnds__015_ =
+         if drop_if__019_ loc___020_ then bnds__015_
+         else
+           let arg__022_ = sexp_of_t loc___020_ in
+           let bnd__021_ = S.List [ S.Atom "loc_"; arg__022_ ] in
+           (bnd__021_ :: bnds__015_ : _ Stdlib.List.t)
+       in
+       let bnds__015_ =
+         let arg__017_ = _of_a__014_ v__016_ in
+         (S.List [ S.Atom "v"; arg__017_ ] :: bnds__015_ : _ Stdlib.List.t)
+       in
+       S.List bnds__015_
 
   let _ = sexp_of_loced
 end
 
-let lex_pos_to_pos ~(base : Lexing.position) (pos : Lexing.position) : rpos =
-  let line = pos.pos_lnum - base.pos_lnum in
-  let col = pos.pos_cnum - pos.pos_bol in
-  (line lsl 16) lor col
+let lex_pos_to_pos ~(base : Lexing.position) (pos : Lexing.position) =
+  (let line = pos.pos_lnum - base.pos_lnum in
+   let col = pos.pos_cnum - pos.pos_bol in
+   (line lsl 16) lor col
+    : rpos)
 
-let pos_to_lex_pos ~(base : Lexing.position) (rpos : rpos) : Lexing.position =
-  let col = rpos land 0xFFFF in
-  let line = (rpos lsr 16) land 0xFFFF in
-  {
-    pos_fname = base.pos_fname;
-    pos_lnum = base.pos_lnum + line;
-    pos_bol = 0;
-    pos_cnum = col;
-  }
+let pos_to_lex_pos ~(base : Lexing.position) (rpos : rpos) =
+  (let col = rpos land 0xFFFF in
+   let line = (rpos lsr 16) land 0xFFFF in
+   {
+     pos_fname = base.pos_fname;
+     pos_lnum = base.pos_lnum + line;
+     pos_bol = 0;
+     pos_cnum = col;
+   }
+    : Lexing.position)
 
 let no_location = { start = -1; _end = -1 }
 
@@ -149,7 +154,13 @@ let to_loc ~(base : Loc.t) (rloc : t) =
         Loc.of_menhir
           (pos_to_lex_pos ~base rloc.start, pos_to_lex_pos ~base rloc._end))
 
-let merge (l1 : t) (l2 : t) : t = { start = l1.start; _end = l2._end }
+let merge (l1 : t) (l2 : t) =
+  (let { start = s1; _end = e1 } = l1 in
+   let { start = s2; _end = e2 } = l2 in
+   let start = if compare_rpos s1 s2 < 0 then s1 else s2 in
+   let _end = if compare_rpos e1 e2 > 0 then e1 else e2 in
+   { start; _end }
+    : t)
 
 let of_menhir ~base ((start, _end) : Lexing.position * Lexing.position) =
   of_loc ~base (Loc.of_menhir (start, _end))
@@ -194,29 +205,33 @@ let loc_range_string ~(base : Loc.t) l =
       Int.to_string end_col;
     ]
 
-let sexp_of_rpos (p : rpos) : S.t =
-  let line = get_line p in
-  let col = get_col p in
-  S.Atom (Int.to_string line ^ ":" ^ Int.to_string col : Stdlib.String.t)
+let sexp_of_rpos (p : rpos) =
+  (let line = get_line p in
+   let col = get_col p in
+   S.Atom (Int.to_string line ^ ":" ^ Int.to_string col : Stdlib.String.t)
+    : S.t)
 
-let sexp_of_t (l : t) : S.t =
-  let start_line = get_line l.start in
-  let end_line = get_line l._end in
-  let start_col = get_col l.start in
-  let end_col = get_col l._end in
-  S.Atom
-    (Stdlib.String.concat ""
-       [
-         Int.to_string start_line;
-         ":";
-         Int.to_string start_col;
-         "-";
-         Int.to_string end_line;
-         ":";
-         Int.to_string end_col;
-       ])
+let sexp_of_t (l : t) =
+  (let start_line = get_line l.start in
+   let end_line = get_line l._end in
+   let start_col = get_col l.start in
+   let end_col = get_col l._end in
+   S.Atom
+     (Stdlib.String.concat ""
+        [
+          Int.to_string start_line;
+          ":";
+          Int.to_string start_col;
+          "-";
+          Int.to_string end_line;
+          ":";
+          Int.to_string end_col;
+        ])
+    : S.t)
 
 let trim_first_char loc = { loc with start = loc.start + 1 }
+[@@dead "+trim_first_char"]
+
 let trim_last_char loc = { loc with _end = loc._end - 1 }
 
 let only_last_n_char loc n =

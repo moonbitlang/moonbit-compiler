@@ -21,7 +21,6 @@ module Hash_int = Basic_hash_int
 module Encode_context = Dwarfsm_encode_context
 module Ast = Dwarfsm_ast
 
-type index = Ast.index
 type binder = Ast.binder
 type label = Ast.label
 type typeidx = Ast.typeidx
@@ -64,11 +63,6 @@ type func = Ast.func
 type elem = Ast.elem
 type data = Ast.data
 type tag = Ast.tag
-
-let vec_of_list l =
-  let vec = Vec.empty () in
-  Lst.iter l (fun it -> Vec.push vec it);
-  vec
 
 module Implicits (Arg : sig
   val ctx : Encode_context.context
@@ -121,21 +115,14 @@ struct
   let ( ^^ ) = Byteseq.concat
   let magic = Byteseq.of_string "\000asm"
   let version = Byteseq.of_string "\001\000\000\000"
-  let vec_inner vec f = Vec.fold_left ~f:(fun t x -> t ^^ f x) Byteseq.empty vec
+
+  let vec_inner vec f =
+    Vec.fold_left ~f:(fun t -> fun x -> t ^^ f x) Byteseq.empty vec
+
   let vec vec f = int_uleb128 (Vec.length vec) ^^ vec_inner vec f
   let byte_vec x = int_uleb128 (String.length x) ^^ Byteseq.of_string x
   let name x = byte_vec x
   let mut = function Ast.Var -> byte 0x01 | Ast.Const -> byte 0x00
-
-  let resolve_index (space : Encode_context.space) (var : index) =
-    let i =
-      match var with
-      | { index; _ } when index <> -1 -> index
-      | { var_name = Some name; _ } -> Hash_string.find_exn space.map name
-      | _ -> assert false
-    in
-    var.index <- i;
-    i
 
   let resolve_binder (space : Encode_context.space) (binder : binder) =
     let i =
@@ -147,46 +134,48 @@ struct
     binder.index <- i;
     i
 
-  let index space i =
-    let i = resolve_index space i in
-    int_sleb128 i
-
   let binder space binder =
     let i = resolve_binder space binder in
     int_sleb128 i
 
-  let typeidx (i : typeidx) = index spaces.types i
+  let resolve_var_ (space : Encode_context.space) (v : Ast.var) =
+    match v with
+    | Unresolve var_name -> Hash_string.find_exn space.map var_name
+    | Resolved { index; _ } -> index
+
+  let resolve_var (space : Encode_context.space) (v : Ast.var) =
+    int_sleb128 (resolve_var_ space v)
+
+  let typeidx (i : typeidx) = resolve_var spaces.types i.var
 
   let structandfieldidx (t : typeidx) (f : fieldidx) =
-    let ti = resolve_index spaces.types t in
-    typeidx t ^^ index (Hash_int.find_exn spaces.fields ti) f
+    let typeidx = resolve_var_ spaces.types t.var in
+    let space = Hash_int.find_exn spaces.fields typeidx in
+    let fieldidx = resolve_var_ space f.var in
+    int_sleb128 typeidx ^^ int_sleb128 fieldidx
 
-  let funcidx (i : funcidx) = index spaces.funcs i
+  let funcidx (i : funcidx) = resolve_var spaces.funcs i.var
 
   let labelidx (i : labelidx) =
-    let i =
-      if i.index >= 0 then i.index
-      else
-        let name = Option.get i.var_name in
+    match i.var with
+    | Resolved { index; _ } -> int_sleb128 index
+    | Unresolve name ->
         let rec aux i (l : label list) =
           match l with
-          | { id = Some name'; _ } :: _ when name = name' -> i
+          | Some name' :: _ when name = name' -> i
           | [] -> -1
           | _ :: l -> aux (i + 1) l
         in
-        aux 0 !curr_labels
-    in
-    assert (i >= 0);
-    int_sleb128 i
+        int_sleb128 (aux 0 !curr_labels)
 
   let localidx (i : localidx) =
-    index (Hash_int.find_exn spaces.locals !curr_func_idx) i
+    resolve_var (Hash_int.find_exn spaces.locals !curr_func_idx) i.var
 
-  let tableidx (i : tableidx) = index spaces.tables i
-  let memidx (i : memidx) = index spaces.mems i
-  let globalidx (i : globalidx) = index spaces.globals i
-  let dataidx (i : dataidx) = index spaces.datas i
-  let tagidx (i : tagidx) = index spaces.tags i
+  let tableidx (i : tableidx) = resolve_var spaces.tables i.var
+  let memidx (i : memidx) = resolve_var spaces.mems i.var
+  let globalidx (i : globalidx) = resolve_var spaces.globals i.var
+  let dataidx (i : dataidx) = resolve_var spaces.datas i.var
+  let tagidx (i : tagidx) = resolve_var spaces.tags i.var
 
   let heaptype (ht : heaptype) =
     match ht with
@@ -224,37 +213,39 @@ struct
     | Valtype vt -> valtype vt
 
   let fieldtype (ft : fieldtype) = storagetype ft.type_ ^^ mut ft.mut
-  let field ((_, ft) : field) = fieldtype ft
+  let field (field : field) = fieldtype field.fieldtype
   let param (p : param) = valtype p.type_
 
   let functype (t : functype) =
     let (Func (pts, rts)) = t in
-    byte 0x60 ^^ vec (vec_of_list pts) param ^^ vec (vec_of_list rts) valtype
+    byte 0x60 ^^ vec (Vec.of_list pts) param ^^ vec (Vec.of_list rts) valtype
 
   let comptype (ct : comptype) =
     match ct with
     | Arraytype (Array ft) -> byte 0x5e ^^ fieldtype ft
-    | Structtype (Struct ft) -> byte 0x5f ^^ vec (vec_of_list ft) field
+    | Structtype (Struct ft) -> byte 0x5f ^^ vec (Vec.of_list ft) field
     | Functype ft -> functype ft
 
   let subtype (st : subtype) =
     if st.super = [] && st.final then comptype st.type_
     else
       byte (if st.final then 0x4f else 0x50)
-      ^^ vec (vec_of_list st.super) typeidx
+      ^^ vec (Vec.of_list st.super) typeidx
       ^^ comptype st.type_
 
   let typedef ((id, st) : typedef) =
-    let encoded = subtype st |> Byteseq.to_string in
-    (if match st.type_ with Functype (Func _) -> true | _ -> false then
-       let encoded_typeidx = binder spaces.types id |> Byteseq.to_string in
-       Hash_string.replace inline_types encoded encoded_typeidx);
+    let encoded = Byteseq.to_string (subtype st) in
+    (match st.type_ with
+    | Functype (Func _) ->
+        let encoded_typeidx = Byteseq.to_string (binder spaces.types id) in
+        Hash_string.replace inline_types encoded encoded_typeidx
+    | _ -> ());
     Byteseq.of_string encoded
 
   let rectype (rt : rectype) =
     match rt with
     | tdef :: [] -> typedef tdef
-    | tdefs -> byte 0x4e ^^ vec (vec_of_list tdefs) typedef
+    | tdefs -> byte 0x4e ^^ vec (Vec.of_list tdefs) typedef
 
   let limits (lim : limits) =
     match lim with
@@ -263,21 +254,27 @@ struct
         byte 0x01 ^^ int32_uleb128 min ^^ int32_uleb128 max
 
   let tabletype (t : tabletype) = reftype t.element_type ^^ limits t.limits
-  let memtype (t : memtype) = limits t.limits
+
+  let memtype (t : memtype) =
+    match (t.limits.max, t.shared) with
+    | Some max, true ->
+        byte 0x03 ^^ int32_uleb128 t.limits.min ^^ int32_uleb128 max
+    | _ -> limits t.limits
+
   let globaltype (t : globaltype) = valtype t.type_ ^^ mut t.mut
 
   let typeuse (t : typeuse) =
     match t with
     | Use (id, _, _) -> typeidx id
     | Inline (pts, rts) ->
-        let encoded = functype (Func (pts, rts)) |> Byteseq.to_string in
+        let encoded = Byteseq.to_string (functype (Func (pts, rts))) in
         let encoded_typeidx =
           Hash_string.find_or_update inline_types encoded ~update:(fun _ ->
               let index = spaces.types.next_index in
               spaces.types.next_index <- index + 1;
               incr num_distinct_inline_types;
               inline_types_buf ^^= Byteseq.of_string encoded;
-              typeidx { var_name = None; index } |> Byteseq.to_string)
+              Byteseq.to_string (int_sleb128 index))
         in
         Byteseq.of_string encoded_typeidx
 
@@ -300,17 +297,17 @@ struct
           [ int_uleb128 count ^^ Byteseq.of_string prev_encoded ]
       | [], None -> []
       | l :: ls, None ->
-          let encoded = local l |> Byteseq.to_string in
+          let encoded = Byteseq.to_string (local l) in
           partition (Some (1, encoded)) ls
       | l :: ls, Some (count, prev_encoded) ->
-          let encoded = local l |> Byteseq.to_string in
+          let encoded = Byteseq.to_string (local l) in
           if String.equal encoded prev_encoded then
             partition (Some (count + 1, prev_encoded)) ls
           else
             (int_uleb128 count ^^ Byteseq.of_string prev_encoded)
             :: partition (Some (1, encoded)) ls
     in
-    vec (vec_of_list (partition None ls)) Fun.id
+    vec (Vec.of_list (partition None ls)) Fun.id
 
   let blocktype (t : typeuse) =
     match t with
@@ -330,6 +327,7 @@ struct
     | Array_fill x -> byte 0xfb ^^ int_uleb128 16 ^^ typeidx x
     | Array_get x -> byte 0xfb ^^ int_uleb128 11 ^^ typeidx x
     | Array_get_u x -> byte 0xfb ^^ int_uleb128 13 ^^ typeidx x
+    | Array_get_s x -> byte 0xfb ^^ int_uleb128 12 ^^ typeidx x
     | Array_len -> byte 0xfb ^^ int_uleb128 15
     | Array_new x -> byte 0xfb ^^ int_uleb128 6 ^^ typeidx x
     | Array_new_data (x, y) ->
@@ -338,15 +336,15 @@ struct
     | Array_new_fixed (x, n) ->
         byte 0xfb ^^ int_uleb128 8 ^^ typeidx x ^^ int32_uleb128 n
     | Array_set x -> byte 0xfb ^^ int_uleb128 14 ^^ typeidx x
-    | Block (l, bt, in1) ->
-        enter_label l (fun () ->
-            let preceded = byte 0x02 ^^ blocktype bt in
+    | Block { label; typeuse; instrs } ->
+        enter_label label (fun () ->
+            let preceded = byte 0x02 ^^ blocktype typeuse in
             let base = base + Byteseq.length preceded in
-            preceded ^^ instr_list ~base in1 ^^ byte 0x0b)
+            preceded ^^ instr_list ~base instrs ^^ byte 0x0b)
     | Br l -> byte 0x0c ^^ labelidx l
     | Br_if l -> byte 0x0d ^^ labelidx l
     | Br_table (ls, l) ->
-        byte 0x0e ^^ vec (vec_of_list ls) labelidx ^^ labelidx l
+        byte 0x0e ^^ vec (Vec.of_list ls) labelidx ^^ labelidx l
     | Call x -> byte 0x10 ^^ funcidx x
     | Call_indirect (x, y) -> byte 0x11 ^^ typeuse y ^^ tableidx x
     | Call_ref x -> byte 0x14 ^^ typeidx x
@@ -457,6 +455,15 @@ struct
     | I32_trunc_sat_f32_u -> byte 0xFC ^^ int_uleb128 1
     | I32_trunc_sat_f64_s -> byte 0xFC ^^ int_uleb128 2
     | I32_trunc_sat_f64_u -> byte 0xFC ^^ int_uleb128 3
+    | I32_atomic_load m -> byte 0xfe ^^ byte 0x10 ^^ memarg m
+    | I32_atomic_load16_u m -> byte 0xfe ^^ byte 0x13 ^^ memarg m
+    | I32_atomic_load8_u m -> byte 0xfe ^^ byte 0x12 ^^ memarg m
+    | I32_atomic_store m -> byte 0xfe ^^ byte 0x17 ^^ memarg m
+    | I32_atomic_store16 m -> byte 0xfe ^^ byte 0x1a ^^ memarg m
+    | I32_atomic_store8 m -> byte 0xfe ^^ byte 0x19 ^^ memarg m
+    | I32_atomic_rmw_cmpxchg m -> byte 0xfe ^^ byte 0x48 ^^ memarg m
+    | I32_atomic_rmw8_cmpxchg_u m -> byte 0xfe ^^ byte 0x4a ^^ memarg m
+    | I32_atomic_rmw16_cmpxchg_u m -> byte 0xfe ^^ byte 0x4b ^^ memarg m
     | I64_add -> byte 0x7c
     | I64_and -> byte 0x83
     | I64_clz -> byte 0x79
@@ -513,32 +520,34 @@ struct
     | F64x2_mul -> byte 0xFD ^^ int_uleb128 242
     | F32x4_add -> byte 0xFD ^^ int_uleb128 228
     | F32x4_mul -> byte 0xFD ^^ int_uleb128 230
-    | If (l, bt, in1, []) ->
-        enter_label l (fun () ->
-            let preceded = byte 0x04 ^^ blocktype bt in
+    | If { label; typeuse; then_; else_ = [] } ->
+        enter_label label (fun () ->
+            let preceded = byte 0x04 ^^ blocktype typeuse in
             let base = base + Byteseq.length preceded in
-            preceded ^^ instr_list ~base in1 ^^ byte 0x0b)
-    | If (l, bt, in1, in2) ->
-        enter_label l (fun () ->
+            preceded ^^ instr_list ~base then_ ^^ byte 0x0b)
+    | If { label; typeuse; then_; else_ } ->
+        enter_label label (fun () ->
             let base0 = base in
-            let preceded = byte 0x04 ^^ blocktype bt in
+            let preceded = byte 0x04 ^^ blocktype typeuse in
             let base = base0 + Byteseq.length preceded in
-            let preceded = preceded ^^ instr_list ~base in1 ^^ byte 0x05 in
+            let preceded = preceded ^^ instr_list ~base then_ ^^ byte 0x05 in
             let base = base0 + Byteseq.length preceded in
-            preceded ^^ instr_list ~base in2 ^^ byte 0x0b)
+            preceded ^^ instr_list ~base else_ ^^ byte 0x0b)
     | Local_get x -> byte 0x20 ^^ localidx x
     | Local_set x -> byte 0x21 ^^ localidx x
     | Local_tee x -> byte 0x22 ^^ localidx x
-    | Loop (l, bt, in1) ->
-        enter_label l (fun () ->
-            let preceded = byte 0x03 ^^ blocktype bt in
+    | Loop { label; typeuse; instrs } ->
+        enter_label label (fun () ->
+            let preceded = byte 0x03 ^^ blocktype typeuse in
             let base = base + Byteseq.length preceded in
-            preceded ^^ instr_list ~base in1 ^^ byte 0x0b)
+            preceded ^^ instr_list ~base instrs ^^ byte 0x0b)
     | Memory_init x -> byte 0xfc ^^ int_uleb128 8 ^^ dataidx x ^^ byte 0x00
     | Memory_copy -> byte 0xfc ^^ int_uleb128 10 ^^ byte 0x00 ^^ byte 0x00
     | Memory_grow -> byte 0x40 ^^ byte 0x00
     | Memory_size -> byte 0x3f ^^ byte 0x00
     | Memory_fill -> byte 0xfc ^^ int_uleb128 11 ^^ byte 0x00
+    | Memory_atomic_notify m -> byte 0xfe ^^ byte 0x00 ^^ memarg m
+    | Memory_atomic_wait32 m -> byte 0xfe ^^ byte 0x01 ^^ memarg m
     | Ref_eq -> byte 0xd3
     | Ref_as_non_null -> byte 0xd4
     | Ref_cast (Ref (NonNull, ht)) -> byte 0xfb ^^ int_uleb128 22 ^^ heaptype ht
@@ -555,11 +564,11 @@ struct
     | Table_get table_idx -> byte 0x25 ^^ tableidx table_idx
     | Unreachable -> byte 0x00
     | Throw x -> byte 0x08 ^^ tagidx x
-    | Try_table (l, bt, cs, es) ->
-        let catch_seq = vec (vec_of_list cs) catch in
-        enter_label l (fun () ->
-            byte 0x1f ^^ blocktype bt ^^ catch_seq ^^ instr_list ~base es
-            ^^ byte 0x0b)
+    | Try_table { label; typeuse; catchs; instrs } ->
+        let catch_seq = vec (Vec.of_list catchs) catch in
+        enter_label label (fun () ->
+            byte 0x1f ^^ blocktype typeuse ^^ catch_seq
+            ^^ instr_list ~base instrs ^^ byte 0x0b)
     | Select -> byte 0x1b
     | No_op -> Byteseq.empty
     | Source_pos pos ->
@@ -571,9 +580,10 @@ struct
 
   and instr_list ~base (l : instr list) =
     List.fold_left
-      (fun t i ->
-        let base = base + Byteseq.length t in
-        t ^^ instr ~base i)
+      (fun t ->
+        fun i ->
+         let base = base + Byteseq.length t in
+         t ^^ instr ~base i)
       Byteseq.empty l
 
   and expr (e : instr list) = instr_list ~base:0 e ^^ byte 0x0b
@@ -621,32 +631,30 @@ struct
     in
     match el with
     | { mode = EMActive (t, e); type_ = Ref (Nullable, Absheaptype Func); _ }
-      when resolve_index spaces.tables t = 0 ->
-        int_uleb128 0 ^^ expr e ^^ vec (vec_of_list el.list) funcrefitem
+      when resolve_var_ spaces.tables t.var = 0 ->
+        int_uleb128 0 ^^ expr e ^^ vec (Vec.of_list el.list) funcrefitem
     | { mode = EMPassive; type_ = Ref (NonNull, Absheaptype Func); _ } ->
-        int_uleb128 1 ^^ byte 0x00 ^^ vec (vec_of_list el.list) funcrefitem
+        int_uleb128 1 ^^ byte 0x00 ^^ vec (Vec.of_list el.list) funcrefitem
     | { mode = EMActive (t, e); type_ = Ref (NonNull, Absheaptype Func); _ } ->
         int_uleb128 2 ^^ tableidx t ^^ expr e ^^ byte 0x00
-        ^^ vec (vec_of_list el.list) funcrefitem
+        ^^ vec (Vec.of_list el.list) funcrefitem
     | { mode = EMDeclarative; type_ = Ref (NonNull, Absheaptype Func); _ } ->
-        int_uleb128 3 ^^ byte 0x00 ^^ vec (vec_of_list el.list) funcrefitem
+        int_uleb128 3 ^^ byte 0x00 ^^ vec (Vec.of_list el.list) funcrefitem
     | { mode = EMActive (t, e); type_ = Ref (Nullable, Absheaptype Func); _ }
-      when resolve_index spaces.tables t = 0 ->
-        int_uleb128 4 ^^ expr e ^^ vec (vec_of_list el.list) funcrefitem
+      when resolve_var_ spaces.tables t.var = 0 ->
+        int_uleb128 4 ^^ expr e ^^ vec (Vec.of_list el.list) funcrefitem
     | { mode = EMPassive; type_; list; _ } ->
-        int_uleb128 5 ^^ reftype type_ ^^ vec (vec_of_list list) expr
+        int_uleb128 5 ^^ reftype type_ ^^ vec (Vec.of_list list) expr
     | { mode = EMActive (t, e); type_; list; _ } ->
         int_uleb128 6 ^^ tableidx t ^^ expr e ^^ reftype type_
-        ^^ vec (vec_of_list list) expr
+        ^^ vec (Vec.of_list list) expr
     | { mode = EMDeclarative; type_; list; _ } ->
-        int_uleb128 7 ^^ reftype type_ ^^ vec (vec_of_list list) expr
+        int_uleb128 7 ^^ reftype type_ ^^ vec (Vec.of_list list) expr
 
   let data (d : data) =
     match d.mode with
     | DMPassive -> int_uleb128 1 ^^ byte_vec d.data_str
-    | DMActive ({ index = 0; _ }, e) ->
-        int_uleb128 0 ^^ expr e ^^ byte_vec d.data_str
-    | DMActive (_, _) -> assert false
+    | DMActive (i, e) -> memidx i ^^ expr e ^^ byte_vec d.data_str
 
   let tag (t : tag) = byte 0x00 ^^ typeuse t.type_
 
@@ -666,13 +674,13 @@ struct
       in
       let pairs = Vec.empty () in
       Hash_string.iter space.map (fun entry -> Vec.push pairs entry);
-      Vec.sort pairs (fun (_, idx1) (_, idx2) -> idx1 - idx2);
+      Vec.sort pairs (fun (_, idx1) -> fun (_, idx2) -> idx1 - idx2);
       vec pairs (fun (name, idx) -> nameassoc idx name)
     in
     let indirectnamemap spaces =
       let pairs = Vec.empty () in
       Hash_int.iter spaces (fun entry -> Vec.push pairs entry);
-      Vec.sort pairs (fun (idx1, _) (idx2, _) -> idx1 - idx2);
+      Vec.sort pairs (fun (idx1, _) -> fun (idx2, _) -> idx1 - idx2);
       vec pairs (fun (idx, space) -> int_uleb128 idx ^^ namemap space)
     in
     customsection "name"
@@ -708,13 +716,9 @@ struct
     let () =
       funcsec_buf ^^= int_uleb128 (Vec.length ctx.funcs);
       codesec_buf ^^= int_uleb128 (Vec.length ctx.funcs);
-      let low_pc = Byteseq.length codesec_buf.contents in
       Vec.iter ctx.funcs (fun fn ->
           funcsec_buf ^^= typeuse fn.type_;
-          codesec_buf ^^= encode_code ~base:(Byteseq.length !codesec_buf) fn);
-      let high_pc = Byteseq.length codesec_buf.contents in
-      ctx.aux.low_pc <- low_pc;
-      ctx.aux.high_pc <- high_pc
+          codesec_buf ^^= encode_code ~base:(Byteseq.length !codesec_buf) fn)
     in
     let funcsec = section 3 !funcsec_buf in
     let codesec = section 10 !codesec_buf in
@@ -737,17 +741,17 @@ struct
       | None -> ()
       | Some custom_sections ->
           let secs = custom_sections () in
-          Lst.iter secs (fun (name, content) ->
+          Lst.iter secs ~f:(fun (name, content) ->
               buf ^^= customsection name content)
     in
     !buf
 end
 
-let encode ?add_code_pos ?set_prologue_end ?custom_sections ~emit_names ctx =
+let encode ?add_code_pos ?custom_sections ~emit_names ctx =
   let module I = Implicits (struct
     let ctx = ctx
     let add_code_pos = add_code_pos
-    let set_prologue_end = set_prologue_end
+    let set_prologue_end = None
     let custom_sections = custom_sections
     let emit_names = emit_names
   end) in

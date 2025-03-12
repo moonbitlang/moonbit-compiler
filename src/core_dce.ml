@@ -26,6 +26,8 @@ let rec is_pure (expr : Core.expr) =
   | Cexpr_handle_error { handle_kind = To_result; obj; _ } -> is_pure obj
   | Cexpr_prim { prim; args; _ } ->
       Primitive.is_pure prim && Lst.for_all args is_pure
+  | Cexpr_and { lhs; rhs; _ } -> is_pure lhs && is_pure rhs
+  | Cexpr_or { lhs; rhs; _ } -> is_pure lhs && is_pure rhs
   | Cexpr_as { expr; _ } -> is_pure expr
   | Cexpr_constr { args; _ } -> Lst.for_all args is_pure
   | Cexpr_tuple { exprs; _ } -> Lst.for_all exprs is_pure
@@ -40,7 +42,8 @@ let rec is_pure (expr : Core.expr) =
       is_pure record && Lst.for_all fields (fun { expr; _ } -> is_pure expr)
   | Cexpr_field { record; _ } -> is_pure record
   | Cexpr_array { exprs; _ } -> Lst.for_all exprs is_pure
-  | Cexpr_sequence { expr1; expr2; _ } -> is_pure expr1 && is_pure expr2
+  | Cexpr_sequence { exprs; last_expr; _ } ->
+      Lst.for_all exprs is_pure && is_pure last_expr
   | Cexpr_if { cond; ifso; ifnot; _ } -> (
       is_pure cond && is_pure ifso
       && match ifnot with None -> true | Some x -> is_pure x)
@@ -78,13 +81,14 @@ let dce_visitor =
        else body
 
      method! visit_Cexpr_letrec env bindings body _ty loc =
-       Lst.iter bindings (fun (name, fn) -> Dce_context.add_func env name fn);
+       Lst.iter bindings ~f:(fun (name, fn) -> Dce_context.add_func env name fn);
        let body = self#visit_expr env body in
        let bindings =
-         Lst.fold_right bindings [] (fun (name, _) acc ->
-             if Dce_context.used env name then
-               (name, Dce_context.get_analyzed_fn env name) :: acc
-             else acc)
+         Lst.fold_right bindings [] (fun (name, _) ->
+             fun acc ->
+              if Dce_context.used env name then
+                (name, Dce_context.get_analyzed_fn env name) :: acc
+              else acc)
        in
        if bindings = [] then body else Core.letrec ~loc bindings body
 
@@ -111,17 +115,17 @@ let mark_used_and_process_def env id =
 
 let eliminate_dead_code (prog : Core.program) =
   let ctx = Dce_context.make () in
-  Lst.iter prog (fun top ->
+  Lst.iter prog ~f:(fun top ->
       match top with
       | Ctop_expr _ -> ()
       | Ctop_let { binder; expr } -> Dce_context.add_value ctx binder expr
       | Ctop_fn { binder; func; subtops; _ } ->
           Dce_context.add_func ctx binder func;
-          Lst.iter subtops (fun { binder; fn } ->
+          Lst.iter subtops ~f:(fun { binder; fn } ->
               Dce_context.add_func ctx binder fn)
       | Ctop_stub _ -> ());
   let analyzed_top_exprs = Vec.empty () in
-  Lst.iter prog (fun top ->
+  Lst.iter prog ~f:(fun top ->
       match top with
       | Ctop_expr { expr; is_main; loc_ } ->
           Vec.push analyzed_top_exprs
@@ -160,17 +164,19 @@ let eliminate_dead_code (prog : Core.program) =
             else
               let func = Dce_context.get_analyzed_fn ctx binder in
               let subtops =
-                Lst.fold_right subtops []
-                  (fun { binder; fn = _ } acc : Core.subtop_fun_decl list ->
-                    if Dce_context.used ctx binder then
-                      { binder; fn = Dce_context.get_analyzed_fn ctx binder }
-                      :: acc
-                    else acc)
+                Lst.fold_right subtops [] (fun { binder; fn = _ } ->
+                    fun acc ->
+                     (if Dce_context.used ctx binder then
+                        { binder; fn = Dce_context.get_analyzed_fn ctx binder }
+                        :: acc
+                      else acc
+                       : Core.subtop_fun_decl list))
               in
               Core.Ctop_fn { binder; func; subtops; ty_params_; is_pub_; loc_ }
               :: aux rest i
         | Ctop_stub { binder; _ } ->
             if Dce_context.used ctx binder then top :: aux rest i
             else aux rest i)
+      [@@tail_mod_cons]
   in
   aux prog 0

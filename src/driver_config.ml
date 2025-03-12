@@ -22,18 +22,25 @@ module Common_Opt = struct
   let source_map = ref false
   let source_map_url = ref ""
   let debug_tokens = ref false
+  let debug_segments = ref false
   let debug_source = ref false
   let contification = ref true
   let wasi = ref false
   let wat_plain_mode = ref false
+  let dedup_wasm = ref false
   let quiet = ref false
   let no_intermediate_file = ref false
   let enable_coverage = ref false
+  let enable_value_tracing = ref false
   let coverage_package_override = ref None
   let is_main = ref false
-  let cc = ref ""
-  let cc_flags = ref ""
-  let cc_link_flags = ref ""
+
+  type llvm_opt = O0 | O1 | O2 | O3 | Os | Oz
+
+  let llvm_opt = ref O2
+  let llvm_target : string option ref = ref None
+  let emit_text_format = ref false
+  let emit_llvm_ir = ref false
 
   let set_coverage_package_override pkg =
     if pkg = "@self" then coverage_package_override := Some None
@@ -43,6 +50,23 @@ module Common_Opt = struct
     ( "-warn-help",
       Arg.Unit Warnings.help_warnings,
       " show description of warning numbers" )
+
+  let set_llvm_opt s =
+    llvm_opt :=
+      match s with
+      | "0" -> O0
+      | "1" -> O1
+      | "2" -> O2
+      | "3" -> O3
+      | "s" -> Os
+      | "z" -> Oz
+      | _ ->
+          failwith
+            "unknown llvm optimization level, should be 0, 1, 2, 3, s or z"
+
+  let set_o0 () =
+    Config.no_opt := true;
+    llvm_opt := O0
 
   let warn_list =
     ( "-w",
@@ -65,6 +89,25 @@ module Common_Opt = struct
        \t@<id>   enable alert and treat it as error\n\
        \tIf <id> is 'all', is stands for all alerts\n\
        \tdefault setting is " ^ Alerts.default_alerts )
+
+  let llvm_list =
+    [
+      ( "-llvm-opt",
+        Arg.String set_llvm_opt,
+        "set llvm optimization level. available levels: 0, 1, 2, 3, s, z. \
+         (LLVM backend only)" );
+      ( "-llvm-target",
+        Arg.String (fun target -> llvm_target := Some target),
+        "set llvm target triple. unset means current target. (LLVM backend \
+         only)" );
+      ( "-S",
+        Arg.Set emit_text_format,
+        "emit text format of the result instead of binary (LLVM backend only)"
+      );
+      ( "-emit-llvm-ir",
+        Arg.Set emit_llvm_ir,
+        "emit LLVM IR or bitcode instead of machine code (LLVM backend only)" );
+    ]
 end
 
 module Linkcore_Opt = struct
@@ -73,10 +116,12 @@ module Linkcore_Opt = struct
   let pkg_config_path = ref ""
   let exported_functions = Basic_hash_string.create 17
   let emit_dts = ref true
+  let stop_on_main = ref false
 
   let spec =
     [
       ("-g", Arg.Set Config.debug, "save debugging information");
+      ("-O0", Arg.Unit Common_Opt.set_o0, " turn off optimization");
       ("-source-map", Arg.Set Common_Opt.source_map, "emit sourcemap");
       ( "-source-map-url",
         Arg.Set_string Common_Opt.source_map_url,
@@ -96,12 +141,13 @@ module Linkcore_Opt = struct
         " output plain style wat" );
       ( "-target",
         Arg.Symbol
-          ( [ "wasm-gc"; "wasm"; "js"; "native" ],
+          ( [ "wasm-gc"; "wasm"; "js"; "native"; "llvm" ],
             fun target -> Config.target := Basic_config.parse_target_exn target
           ),
         "set compilation target. available targets: wasm, wasm-gc, js, native"
       );
       ("-no-dts", Arg.Clear emit_dts, "Do not emit typescript declaration file");
+      ("-stop-on-main", Arg.Set stop_on_main, "stop on main function");
       ( "-js-format",
         Arg.Symbol
           ( [ "esm"; "cjs"; "iife" ],
@@ -135,6 +181,15 @@ module Linkcore_Opt = struct
       ( "-import-memory-name",
         Arg.String (fun name -> Config.import_memory_name := Some name),
         "specify the name of the memory to import" );
+      ( "-memory-limits-min",
+        Arg.Int (fun min -> Config.memory_limits_min := Some min),
+        "specify the minimum size of the memory" );
+      ( "-memory-limits-max",
+        Arg.Int (fun max -> Config.memory_limits_max := Some max),
+        "specify the maximum size of the memory" );
+      ( "-shared-memory",
+        Arg.Set Config.shared_memory,
+        "specify the memory to be shared" );
       ( "-heap-start-address",
         Arg.Set_int Config.heap_memory_start,
         "reserve the memory below the start address" );
@@ -149,13 +204,6 @@ module Linkcore_Opt = struct
       ( "-leak-check",
         Arg.Set Config.leak_check,
         "enable memory leak check for wasm_linear backend" );
-      ("-cc", Arg.Set_string Common_Opt.cc, "C compiler for native backend");
-      ( "-cc-flags",
-        Arg.Set_string Common_Opt.cc_flags,
-        " extra C compiler flags for native backend" );
-      ( "-cc-link-flags",
-        Arg.Set_string Common_Opt.cc_link_flags,
-        " linker flags for native backend" );
       ( "-use-js-builtin-string",
         Arg.Set Config.use_js_builtin_string,
         "use js builtin string" );
@@ -163,12 +211,14 @@ module Linkcore_Opt = struct
         Arg.String (fun path -> pkg_config_path := path),
         "path to moon.pkg.json" );
     ]
+    @ Common_Opt.llvm_list
 end
 
 module Buildpkg_Opt = struct
   let mi_files = ref []
   let output_file = ref ""
   let no_mi = ref false
+  let patch_file = ref ""
   let blackbox_test = ref false
   let whitebox_test = ref false
 
@@ -178,6 +228,7 @@ module Buildpkg_Opt = struct
         Arg.String (fun mi -> mi_files := mi :: !mi_files),
         "dependent .mi files" );
       ("-g", Arg.Set Config.debug, "save debugging information");
+      ("-O0", Arg.Set Config.no_opt, " turn off optimization");
       ("-source-map", Arg.Set Common_Opt.source_map, "emit sourcemap");
       ( "-source-map-url",
         Arg.Set_string Common_Opt.source_map_url,
@@ -188,7 +239,7 @@ module Buildpkg_Opt = struct
         "output file (suffix with .core by convention)" );
       ( "-target",
         Arg.Symbol
-          ( [ "wasm-gc"; "wasm"; "js"; "native" ],
+          ( [ "wasm-gc"; "wasm"; "js"; "native"; "llvm" ],
             fun target -> Config.target := Basic_config.parse_target_exn target
           ),
         "set compilation target. available targets: wasm, wasm-gc, js, native"
@@ -207,6 +258,7 @@ module Buildpkg_Opt = struct
       ( "-enable-coverage",
         Arg.Set Common_Opt.enable_coverage,
         " Enable code coverage tracking" );
+      ("-enable-value-tracing", Arg.Set Common_Opt.enable_value_tracing, "");
       ( "-coverage-package-override",
         Arg.String Common_Opt.set_coverage_package_override,
         "Override package name for coverage tracking. use \"@self\" for \
@@ -221,17 +273,18 @@ module Buildpkg_Opt = struct
               Config.error_format :=
                 Basic_config.parse_error_format_exn error_format ),
         " set format of diagnostics. available formats: human, json" );
+      ("-patch-file", Arg.Set_string patch_file, "patch file");
       ("-no-mi", Arg.Set no_mi, "don't generate .mi file");
-      Common_Opt.warn_help;
-      Common_Opt.warn_list;
-      Common_Opt.alert_list;
     ]
+    @ Common_Opt.llvm_list
+    @ [ Common_Opt.warn_help; Common_Opt.warn_list; Common_Opt.alert_list ]
 end
 
 module Check_Opt = struct
   let mi_files = ref []
   let output_file = ref ""
   let no_mi = ref false
+  let patch_file = ref ""
   let blackbox_test = ref false
   let whitebox_test = ref false
 
@@ -245,7 +298,7 @@ module Check_Opt = struct
         "output file (suffix with .mi by convention)" );
       ( "-target",
         Arg.Symbol
-          ( [ "wasm-gc"; "wasm"; "js"; "native" ],
+          ( [ "wasm-gc"; "wasm"; "js"; "native"; "llvm" ],
             fun target -> Config.target := Basic_config.parse_target_exn target
           ),
         "set compilation target. available targets: wasm, wasm-gc, js, native"
@@ -271,6 +324,7 @@ module Check_Opt = struct
               Config.error_format :=
                 Basic_config.parse_error_format_exn error_format ),
         " set format of diagnostics. available formats: human, json" );
+      ("-patch-file", Arg.Set_string patch_file, "patch file");
       ("-no-mi", Arg.Set no_mi, "don't generate .mi file");
       Common_Opt.warn_help;
       Common_Opt.warn_list;
@@ -286,18 +340,21 @@ module Compile_Opt = struct
   let emit_dts = ref true
   let stop_after_parsing = ref false
   let stop_after_typing = ref false
+  let stop_on_main = ref false
 
   let spec =
     [
       ("-q", Arg.Set Common_Opt.quiet, "quite mode");
       ("-verbose", Arg.Set Config.verbose, " verbose mode for debugging");
       ("-g", Arg.Set Config.debug, "save debugging information");
+      ("-O0", Arg.Set Config.no_opt, " turn off optimization");
       ("-dsource", Arg.Set Common_Opt.debug_source, "debug source");
       ("-source-map", Arg.Set Common_Opt.source_map, "emit sourcemap");
       ( "-source-map-url",
         Arg.Set_string Common_Opt.source_map_url,
         "set url of source map" );
       ("-no-dts", Arg.Clear emit_dts, "Do not emit typescript declaration file");
+      ("-stop-on-main", Arg.Set stop_on_main, "stop on main function");
       ( "-o",
         Arg.Set_string output_file,
         "output file, suffix with .wat or .wasm" );
@@ -319,7 +376,7 @@ module Compile_Opt = struct
       ("-no-rc", Arg.Clear Common_Opt.rc, " disable reference counting GC");
       ( "-target",
         Arg.Symbol
-          ( [ "wasm-gc"; "wasm"; "js"; "native" ],
+          ( [ "wasm-gc"; "wasm"; "js"; "native"; "llvm" ],
             fun target -> Config.target := Basic_config.parse_target_exn target
           ),
         " set compilation target. available targets: wasm, wasm-gc, js, native"
@@ -337,6 +394,11 @@ module Compile_Opt = struct
         "set js format" );
       ("-wasi", Arg.Set Common_Opt.wasi, " compile to WASI");
       ("-debug-tokens", Arg.Set Common_Opt.debug_tokens, " debug token stream");
+      ("-debug-segments", Arg.Set Common_Opt.debug_segments, " debug segments");
+      ( "-parser",
+        Arg.Symbol (Basic_config.symbols, Basic_config.parse_symbol_exn),
+        " option to set the parser, default: "
+        ^ Basic_config.current_parser_display () );
       ("-stop-after-parsing", Arg.Set stop_after_parsing, " stop after parsing");
       ("-stop-after-typing", Arg.Set stop_after_typing, " stop after typing");
       ("-show-loc", Arg.Set Basic_config.show_loc, " show loc in ir");
@@ -346,6 +408,7 @@ module Compile_Opt = struct
       ( "-enable-coverage",
         Arg.Set Common_Opt.enable_coverage,
         " Enable code coverage tracking" );
+      ("-enable-value-tracing", Arg.Set Common_Opt.enable_value_tracing, "");
       ( "-coverage-package-override",
         Arg.String Common_Opt.set_coverage_package_override,
         "Override package name for coverage tracking. use \"@self\" for \
@@ -387,23 +450,21 @@ module Compile_Opt = struct
       ( "-memory-safety-check",
         Arg.Set Config.memory_safety_check,
         "enable memory safety check" );
-      ("-cc", Arg.Set_string Common_Opt.cc, "C compiler for native backend");
-      ( "-cc-flags",
-        Arg.Set_string Common_Opt.cc_flags,
-        " extra C compiler flags for native backend" );
-      ( "-cc-link-flags",
-        Arg.Set_string Common_Opt.cc_link_flags,
-        " linker flags for native backend" );
       ( "-use-js-builtin-string",
         Arg.Set Config.use_js_builtin_string,
         "use js builtin string" );
-      Common_Opt.warn_help;
-      Common_Opt.warn_list;
-      Common_Opt.alert_list;
     ]
+    @ Common_Opt.llvm_list
+    @ [ Common_Opt.warn_help; Common_Opt.warn_list; Common_Opt.alert_list ]
 end
 
 module Gentestinfo_Opt = struct
+  let patch_file = ref ""
   let json = ref false
-  let spec = [ ("-json", Arg.Set json, "output in json format") ]
+
+  let spec =
+    [
+      ("-json", Arg.Set json, "output in json format");
+      ("-patch-file", Arg.Set_string patch_file, "patch file");
+    ]
 end

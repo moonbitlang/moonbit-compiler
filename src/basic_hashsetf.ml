@@ -65,29 +65,31 @@ struct
     done;
     tbl
 
-  let check_add (h : _ Hashset_gen.t) key : bool =
-    let i = key_index h key in
-    let h_data = h.data in
-    let old_bucket = h_data.!(i) in
-    if not (Hashset_gen.small_bucket_mem equal_key key old_bucket) then (
-      h_data.!(i) <- Cons { key; next = old_bucket };
-      h.size <- h.size + 1;
-      if h.size > Array.length h_data lsl 1 then Hashset_gen.resize key_index h;
-      true)
-    else false
+  let check_add (h : _ Hashset_gen.t) key =
+    (let i = key_index h key in
+     let h_data = h.data in
+     let old_bucket = h_data.!(i) in
+     if not (Hashset_gen.small_bucket_mem equal_key key old_bucket) then (
+       h_data.!(i) <- Cons { key; next = old_bucket };
+       h.size <- h.size + 1;
+       if h.size > Array.length h_data lsl 1 then Hashset_gen.resize key_index h;
+       true)
+     else false
+      : bool)
 
-  let find_or_add (h : _ Hashset_gen.t) key : key =
-    let i = key_index h key in
-    let h_data = h.data in
-    let old_bucket = h_data.!(i) in
-    match Hashset_gen.small_bucket_find equal_key key old_bucket with
-    | Some key0 -> key0
-    | None ->
-        h_data.!(i) <- Cons { key; next = old_bucket };
-        h.size <- h.size + 1;
-        if h.size > Array.length h_data lsl 1 then
-          Hashset_gen.resize key_index h;
-        key
+  let find_or_add (h : _ Hashset_gen.t) key =
+    (let i = key_index h key in
+     let h_data = h.data in
+     let old_bucket = h_data.!(i) in
+     match Hashset_gen.small_bucket_find equal_key key old_bucket with
+     | Some key0 -> key0
+     | None ->
+         h_data.!(i) <- Cons { key; next = old_bucket };
+         h.size <- h.size + 1;
+         if h.size > Array.length h_data lsl 1 then
+           Hashset_gen.resize key_index h;
+         key
+      : key)
 
   let mem (h : _ Hashset_gen.t) key =
     Hashset_gen.small_bucket_mem equal_key key h.data.!(key_index h key)

@@ -14,8 +14,8 @@
 
 
 type 'a static_matching_result =
-  | For_sure_yes of { ok_db : 'a }
-  | For_sure_no of { fail_db : 'a }
+  | For_sure_yes
+  | For_sure_no
   | Uncertain of { ok_db : 'a; fail_db : 'a }
 
 module type CASE_SET = sig

@@ -66,6 +66,7 @@ type toplevel = {
       [@sexp_drop_if function Normal -> true | Prim _ | Const _ -> false]
   loc_ : Loc.t;
   doc_ : Docstring.t; [@sexp_drop_if Docstring.is_empty]
+  attrs : Checked_attributes.t;
   ty_params_ : Tvar_env.t; [@sexp_drop_if Tvar_env.is_empty]
   arity_ : Fn_arity.t option;
       [@sexp_drop_if
@@ -82,11 +83,11 @@ include struct
        | Normal -> true
        | Prim _ | Const _ -> false
      and (drop_if__024_ : Docstring.t -> Stdlib.Bool.t) = Docstring.is_empty
-     and (drop_if__029_ : Tvar_env.t -> Stdlib.Bool.t) = Tvar_env.is_empty
-     and (drop_if__034_ : Fn_arity.t option -> Stdlib.Bool.t) = function
+     and (drop_if__031_ : Tvar_env.t -> Stdlib.Bool.t) = Tvar_env.is_empty
+     and (drop_if__036_ : Fn_arity.t option -> Stdlib.Bool.t) = function
        | Some arity -> Fn_arity.is_simple arity
        | None -> true
-     and (drop_if__041_ : direct_use_loc -> Stdlib.Bool.t) = is_no_direct_use in
+     and (drop_if__043_ : direct_use_loc -> Stdlib.Bool.t) = is_no_direct_use in
      fun {
            id = id__010_;
            typ = typ__012_;
@@ -94,42 +95,47 @@ include struct
            kind = kind__018_;
            loc_ = loc___021_;
            doc_ = doc___025_;
-           ty_params_ = ty_params___030_;
-           arity_ = arity___035_;
-           param_names_ = param_names___038_;
-           direct_use_loc_ = direct_use_loc___042_;
+           attrs = attrs__028_;
+           ty_params_ = ty_params___032_;
+           arity_ = arity___037_;
+           param_names_ = param_names___040_;
+           direct_use_loc_ = direct_use_loc___044_;
          } ->
        let bnds__009_ = ([] : _ Stdlib.List.t) in
        let bnds__009_ =
-         if drop_if__041_ direct_use_loc___042_ then bnds__009_
+         if drop_if__043_ direct_use_loc___044_ then bnds__009_
          else
-           let arg__044_ = sexp_of_direct_use_loc direct_use_loc___042_ in
-           let bnd__043_ = S.List [ S.Atom "direct_use_loc_"; arg__044_ ] in
-           (bnd__043_ :: bnds__009_ : _ Stdlib.List.t)
+           let arg__046_ = sexp_of_direct_use_loc direct_use_loc___044_ in
+           let bnd__045_ = S.List [ S.Atom "direct_use_loc_"; arg__046_ ] in
+           (bnd__045_ :: bnds__009_ : _ Stdlib.List.t)
        in
        let bnds__009_ =
-         let arg__039_ =
+         let arg__041_ =
            Moon_sexp_conv.sexp_of_list Moon_sexp_conv.sexp_of_string
-             param_names___038_
+             param_names___040_
          in
-         (S.List [ S.Atom "param_names_"; arg__039_ ] :: bnds__009_
+         (S.List [ S.Atom "param_names_"; arg__041_ ] :: bnds__009_
            : _ Stdlib.List.t)
        in
        let bnds__009_ =
-         if drop_if__034_ arity___035_ then bnds__009_
+         if drop_if__036_ arity___037_ then bnds__009_
          else
-           let arg__037_ =
-             (Moon_sexp_conv.sexp_of_option Fn_arity.sexp_of_t) arity___035_
+           let arg__039_ =
+             (Moon_sexp_conv.sexp_of_option Fn_arity.sexp_of_t) arity___037_
            in
-           let bnd__036_ = S.List [ S.Atom "arity_"; arg__037_ ] in
-           (bnd__036_ :: bnds__009_ : _ Stdlib.List.t)
+           let bnd__038_ = S.List [ S.Atom "arity_"; arg__039_ ] in
+           (bnd__038_ :: bnds__009_ : _ Stdlib.List.t)
        in
        let bnds__009_ =
-         if drop_if__029_ ty_params___030_ then bnds__009_
+         if drop_if__031_ ty_params___032_ then bnds__009_
          else
-           let arg__032_ = Tvar_env.sexp_of_t ty_params___030_ in
-           let bnd__031_ = S.List [ S.Atom "ty_params_"; arg__032_ ] in
-           (bnd__031_ :: bnds__009_ : _ Stdlib.List.t)
+           let arg__034_ = Tvar_env.sexp_of_t ty_params___032_ in
+           let bnd__033_ = S.List [ S.Atom "ty_params_"; arg__034_ ] in
+           (bnd__033_ :: bnds__009_ : _ Stdlib.List.t)
+       in
+       let bnds__009_ =
+         let arg__029_ = Checked_attributes.sexp_of_t attrs__028_ in
+         (S.List [ S.Atom "attrs"; arg__029_ ] :: bnds__009_ : _ Stdlib.List.t)
        in
        let bnds__009_ =
          if drop_if__024_ doc___025_ then bnds__009_
@@ -177,39 +183,39 @@ include struct
 
   let sexp_of_t =
     (function
-     | Local_imm { id = id__046_; typ = typ__048_; loc_ = loc___050_ } ->
-         let bnds__045_ = ([] : _ Stdlib.List.t) in
-         let bnds__045_ =
-           let arg__051_ = Rloc.sexp_of_t loc___050_ in
-           (S.List [ S.Atom "loc_"; arg__051_ ] :: bnds__045_ : _ Stdlib.List.t)
+     | Local_imm { id = id__048_; typ = typ__050_; loc_ = loc___052_ } ->
+         let bnds__047_ = ([] : _ Stdlib.List.t) in
+         let bnds__047_ =
+           let arg__053_ = Rloc.sexp_of_t loc___052_ in
+           (S.List [ S.Atom "loc_"; arg__053_ ] :: bnds__047_ : _ Stdlib.List.t)
          in
-         let bnds__045_ =
-           let arg__049_ = Stype.sexp_of_t typ__048_ in
-           (S.List [ S.Atom "typ"; arg__049_ ] :: bnds__045_ : _ Stdlib.List.t)
+         let bnds__047_ =
+           let arg__051_ = Stype.sexp_of_t typ__050_ in
+           (S.List [ S.Atom "typ"; arg__051_ ] :: bnds__047_ : _ Stdlib.List.t)
          in
-         let bnds__045_ =
-           let arg__047_ = Ident.sexp_of_t id__046_ in
-           (S.List [ S.Atom "id"; arg__047_ ] :: bnds__045_ : _ Stdlib.List.t)
+         let bnds__047_ =
+           let arg__049_ = Ident.sexp_of_t id__048_ in
+           (S.List [ S.Atom "id"; arg__049_ ] :: bnds__047_ : _ Stdlib.List.t)
          in
-         S.List (S.Atom "Local_imm" :: bnds__045_)
-     | Local_mut { id = id__053_; typ = typ__055_; loc_ = loc___057_ } ->
-         let bnds__052_ = ([] : _ Stdlib.List.t) in
-         let bnds__052_ =
-           let arg__058_ = Rloc.sexp_of_t loc___057_ in
-           (S.List [ S.Atom "loc_"; arg__058_ ] :: bnds__052_ : _ Stdlib.List.t)
+         S.List (S.Atom "Local_imm" :: bnds__047_)
+     | Local_mut { id = id__055_; typ = typ__057_; loc_ = loc___059_ } ->
+         let bnds__054_ = ([] : _ Stdlib.List.t) in
+         let bnds__054_ =
+           let arg__060_ = Rloc.sexp_of_t loc___059_ in
+           (S.List [ S.Atom "loc_"; arg__060_ ] :: bnds__054_ : _ Stdlib.List.t)
          in
-         let bnds__052_ =
-           let arg__056_ = Stype.sexp_of_t typ__055_ in
-           (S.List [ S.Atom "typ"; arg__056_ ] :: bnds__052_ : _ Stdlib.List.t)
+         let bnds__054_ =
+           let arg__058_ = Stype.sexp_of_t typ__057_ in
+           (S.List [ S.Atom "typ"; arg__058_ ] :: bnds__054_ : _ Stdlib.List.t)
          in
-         let bnds__052_ =
-           let arg__054_ = Ident.sexp_of_t id__053_ in
-           (S.List [ S.Atom "id"; arg__054_ ] :: bnds__052_ : _ Stdlib.List.t)
+         let bnds__054_ =
+           let arg__056_ = Ident.sexp_of_t id__055_ in
+           (S.List [ S.Atom "id"; arg__056_ ] :: bnds__054_ : _ Stdlib.List.t)
          in
-         S.List (S.Atom "Local_mut" :: bnds__052_)
-     | Toplevel_value arg0__059_ ->
-         let res0__060_ = sexp_of_toplevel arg0__059_ in
-         S.List [ S.Atom "Toplevel_value"; res0__060_ ]
+         S.List (S.Atom "Local_mut" :: bnds__054_)
+     | Toplevel_value arg0__061_ ->
+         let res0__062_ = sexp_of_toplevel arg0__061_ in
+         S.List [ S.Atom "Toplevel_value"; res0__062_ ]
       : t -> S.t)
 
   let _ = sexp_of_t

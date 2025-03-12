@@ -109,9 +109,11 @@ let add t id ~typ ~mut ~loc =
     (if mut then Local_mut { id; typ; loc_ = loc }
      else Local_imm { id; typ; loc_ = loc })
 
-let rec find_by_name_opt (env : t) (name : string) : Value_info.t option =
-  match env with
-  | Empty -> None
-  | Node (l, k, r, _) ->
-      let c = String.compare name k.key in
-      if c = 0 then Some k.v else find_by_name_opt (if c < 0 then l else r) name
+let rec find_by_name_opt (env : t) (name : string) =
+  (match env with
+   | Empty -> None
+   | Node (l, k, r, _) ->
+       let c = String.compare name k.key in
+       if c = 0 then Some k.v
+       else find_by_name_opt (if c < 0 then l else r) name
+    : Value_info.t option)

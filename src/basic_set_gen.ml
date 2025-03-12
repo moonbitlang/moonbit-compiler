@@ -111,48 +111,49 @@ let rec check_height_and_diff = function
 
 let check tree = ignore (check_height_and_diff tree)
 
-let bal l v r : _ t =
-  let hl = height l in
-  let hr = height r in
-  if hl > hr + 2 then
-    let { l = ll; r = lr; v = lv; h = _ } = ~!l in
-    let hll = height ll in
-    let hlr = height lr in
-    if hll >= hlr then
-      let hnode = calc_height hlr hr in
-      unsafe_node lv ll
-        (unsafe_node_maybe_leaf v lr r hnode)
-        (calc_height hll hnode)
-    else
-      let { l = lrl; r = lrr; v = lrv; _ } = ~!lr in
-      let hlrl = height lrl in
-      let hlrr = height lrr in
-      let hlnode = calc_height hll hlrl in
-      let hrnode = calc_height hlrr hr in
-      unsafe_node lrv
-        (unsafe_node_maybe_leaf lv ll lrl hlnode)
-        (unsafe_node_maybe_leaf v lrr r hrnode)
-        (calc_height hlnode hrnode)
-  else if hr > hl + 2 then
-    let { l = rl; r = rr; v = rv; _ } = ~!r in
-    let hrr = height rr in
-    let hrl = height rl in
-    if hrr >= hrl then
-      let hnode = calc_height hl hrl in
-      unsafe_node rv
-        (unsafe_node_maybe_leaf v l rl hnode)
-        rr (calc_height hnode hrr)
-    else
-      let { l = rll; r = rlr; v = rlv; _ } = ~!rl in
-      let hrll = height rll in
-      let hrlr = height rlr in
-      let hlnode = calc_height hl hrll in
-      let hrnode = calc_height hrlr hrr in
-      unsafe_node rlv
-        (unsafe_node_maybe_leaf v l rll hlnode)
-        (unsafe_node_maybe_leaf rv rlr rr hrnode)
-        (calc_height hlnode hrnode)
-  else unsafe_node_maybe_leaf v l r (calc_height hl hr)
+let bal l v r =
+  (let hl = height l in
+   let hr = height r in
+   if hl > hr + 2 then
+     let { l = ll; r = lr; v = lv; h = _ } = ~!l in
+     let hll = height ll in
+     let hlr = height lr in
+     if hll >= hlr then
+       let hnode = calc_height hlr hr in
+       unsafe_node lv ll
+         (unsafe_node_maybe_leaf v lr r hnode)
+         (calc_height hll hnode)
+     else
+       let { l = lrl; r = lrr; v = lrv; _ } = ~!lr in
+       let hlrl = height lrl in
+       let hlrr = height lrr in
+       let hlnode = calc_height hll hlrl in
+       let hrnode = calc_height hlrr hr in
+       unsafe_node lrv
+         (unsafe_node_maybe_leaf lv ll lrl hlnode)
+         (unsafe_node_maybe_leaf v lrr r hrnode)
+         (calc_height hlnode hrnode)
+   else if hr > hl + 2 then
+     let { l = rl; r = rr; v = rv; _ } = ~!r in
+     let hrr = height rr in
+     let hrl = height rl in
+     if hrr >= hrl then
+       let hnode = calc_height hl hrl in
+       unsafe_node rv
+         (unsafe_node_maybe_leaf v l rl hnode)
+         rr (calc_height hnode hrr)
+     else
+       let { l = rll; r = rlr; v = rlv; _ } = ~!rl in
+       let hrll = height rll in
+       let hrlr = height rlr in
+       let hlnode = calc_height hl hrll in
+       let hrnode = calc_height hrlr hrr in
+       unsafe_node rlv
+         (unsafe_node_maybe_leaf v l rll hlnode)
+         (unsafe_node_maybe_leaf rv rlr rr hrnode)
+         (calc_height hlnode hrnode)
+   else unsafe_node_maybe_leaf v l r (calc_height hl hr)
+    : _ t)
 
 let rec remove_min_elt = function
   | Empty -> invalid_arg __FUNCTION__

@@ -85,48 +85,52 @@ let rec bindings_aux accu = function
 
 let bindings s = bindings_aux [] s
 
-let rec fill_array_with_f (s : _ t) i arr f : int =
-  match s with
-  | Empty -> i
-  | Leaf { k; v } ->
-      arr.!(i) <- f k v;
-      i + 1
-  | Node { l; k; v; r; _ } ->
-      let inext = fill_array_with_f l i arr f in
-      arr.!(inext) <- f k v;
-      fill_array_with_f r (inext + 1) arr f
+let rec fill_array_with_f (s : _ t) i arr f =
+  (match s with
+   | Empty -> i
+   | Leaf { k; v } ->
+       arr.!(i) <- f k v;
+       i + 1
+   | Node { l; k; v; r; _ } ->
+       let inext = fill_array_with_f l i arr f in
+       arr.!(inext) <- f k v;
+       fill_array_with_f r (inext + 1) arr f
+    : int)
 
-let rec fill_array_aux (s : _ t) i arr : int =
-  match s with
-  | Empty -> i
-  | Leaf { k; v } ->
-      arr.!(i) <- (k, v);
-      i + 1
-  | Node { l; k; v; r; _ } ->
-      let inext = fill_array_aux l i arr in
-      arr.!(inext) <- (k, v);
-      fill_array_aux r (inext + 1) arr
+let rec fill_array_aux (s : _ t) i arr =
+  (match s with
+   | Empty -> i
+   | Leaf { k; v } ->
+       arr.!(i) <- (k, v);
+       i + 1
+   | Node { l; k; v; r; _ } ->
+       let inext = fill_array_aux l i arr in
+       arr.!(inext) <- (k, v);
+       fill_array_aux r (inext + 1) arr
+    : int)
 
-let to_sorted_array (s : ('key, 'a) t) : ('key * 'a) array =
-  match s with
-  | Empty -> [||]
-  | Leaf { k; v } -> [| (k, v) |]
-  | Node { l; k; v; r; _ } ->
-      let len = cardinal_aux (cardinal_aux 1 r) l in
-      let arr = Array.make len (k, v) in
-      ignore (fill_array_aux s 0 arr : int);
-      arr
+let to_sorted_array (s : ('key, 'a) t) =
+  (match s with
+   | Empty -> [||]
+   | Leaf { k; v } -> [| (k, v) |]
+   | Node { l; k; v; r; _ } ->
+       let len = cardinal_aux (cardinal_aux 1 r) l in
+       let arr = Array.make len (k, v) in
+       ignore (fill_array_aux s 0 arr : int);
+       arr
+    : ('key * 'a) array)
 
-let to_sorted_array_with_f (type key a b) (s : (key, a) t) (f : key -> a -> b) :
-    b array =
-  match s with
-  | Empty -> [||]
-  | Leaf { k; v } -> [| f k v |]
-  | Node { l; k; v; r; _ } ->
-      let len = cardinal_aux (cardinal_aux 1 r) l in
-      let arr = Array.make len (f k v) in
-      ignore (fill_array_with_f s 0 arr f : int);
-      arr
+let to_sorted_array_with_f (type key) (type a) (type b) (s : (key, a) t)
+    (f : key -> a -> b) =
+  (match s with
+   | Empty -> [||]
+   | Leaf { k; v } -> [| f k v |]
+   | Node { l; k; v; r; _ } ->
+       let len = cardinal_aux (cardinal_aux 1 r) l in
+       let arr = Array.make len (f k v) in
+       ignore (fill_array_with_f s 0 arr f : int);
+       arr
+    : b array)
 
 let rec keys_aux accu = function
   | Empty -> accu

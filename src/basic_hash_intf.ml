@@ -40,6 +40,7 @@ module type S = sig
   val to_list_with : 'a t -> (key -> 'a -> 'c) -> 'c list
   val to_list : 'a t -> (key * 'a) list
   val to_array : 'a t -> (key * 'a) array
+  val to_array_map : 'a t -> (key * 'a -> 'b) -> 'b array
   val to_array_filter_map : 'a t -> (key * 'a -> 'b option) -> 'b array
   val of_list : (key * 'a) list -> 'a t
   val of_list2 : key list -> 'a list -> 'a t

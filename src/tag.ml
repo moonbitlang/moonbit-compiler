@@ -23,31 +23,34 @@ include struct
   let _ = fun (_ : t) -> ()
 
   let compare =
-    (fun a__001_ b__002_ ->
-       if Stdlib.( == ) a__001_ b__002_ then 0
-       else Stdlib.compare (a__001_.index : int) b__002_.index
+    (fun a__001_ ->
+       fun b__002_ ->
+        if Stdlib.( == ) a__001_ b__002_ then 0
+        else Stdlib.compare (a__001_.index : int) b__002_.index
       : t -> t -> int)
 
   let _ = compare
 
   let equal =
-    (fun a__003_ b__004_ ->
-       if Stdlib.( == ) a__003_ b__004_ then true
-       else Stdlib.( = ) (a__003_.index : int) b__004_.index
+    (fun a__003_ ->
+       fun b__004_ ->
+        if Stdlib.( == ) a__003_ b__004_ then true
+        else Stdlib.( = ) (a__003_.index : int) b__004_.index
       : t -> t -> bool)
 
   let _ = equal
 
   let (hash_fold_t : Ppx_base.state -> t -> Ppx_base.state) =
-   fun hsv arg ->
-    let hsv =
-      let hsv =
-        let hsv = hsv in
-        Ppx_base.hash_fold_int hsv arg.index
-      in
-      hsv
-    in
-    hsv
+   fun hsv ->
+    fun arg ->
+     let hsv =
+       let hsv =
+         let hsv = hsv in
+         Ppx_base.hash_fold_int hsv arg.index
+       in
+       hsv
+     in
+     hsv
 
   let _ = hash_fold_t
 
@@ -62,13 +65,21 @@ include struct
   let _ = hash
 end
 
-let sexp_of_t { name_; index = _ } : S.t =
-  List (List.cons (Atom "Constr_tag_regular" : S.t) ([ Atom name_ ] : S.t list))
+let sexp_of_t { name_; index = _ } =
+  (List
+     (List.cons (Atom "Constr_tag_regular" : S.t) ([ Atom name_ ] : S.t list))
+    : S.t)
 
 let of_core_tag (extensible_tag_info : int Basic_hash_string.t)
     (tag : Basic_constr_info.constr_tag) =
   match tag with
-  | Constr_tag_regular { index; name_; is_constant_; _ } ->
+  | Constr_tag_regular { index; name_; repr_; _ } ->
+      let is_constant_ =
+        match repr_ with
+        | Constant -> true
+        | Non_constant -> false
+        | Integer _ -> assert false
+      in
       { index; name_; is_constant_ }
   | Extensible_tag { pkg; type_name; name; total = _; index = _ } -> (
       let str = Basic_constr_info.ext_tag_to_str ~pkg ~type_name ~name in
@@ -81,6 +92,12 @@ let of_core_tag (extensible_tag_info : int Basic_hash_string.t)
 
 let of_core_tag_no_ext (tag : Basic_constr_info.constr_tag) =
   match tag with
-  | Constr_tag_regular { index; name_; is_constant_; _ } ->
+  | Constr_tag_regular { index; name_; repr_; _ } ->
+      let is_constant_ =
+        match repr_ with
+        | Constant -> true
+        | Non_constant -> false
+        | Integer _ -> assert false
+      in
       { index; name_; is_constant_ }
   | Extensible_tag _ -> assert false

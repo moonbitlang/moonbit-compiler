@@ -21,23 +21,26 @@ let compute_closure ~(types : Global_env.All_types.t)
     (constraints : Tvar_env.type_constraint list) =
   let visited = H.create (List.length constraints) in
   let closure = Vec.empty () in
-  Lst.iter constraints (fun c ->
+  Lst.iter constraints ~f:(fun c ->
       H.add visited c.trait;
       Vec.push closure c);
-  let rec add_super_traits ~loc_ ~required_by_ trait =
-    let required_by_ = trait :: required_by_ in
+  let rec add_super_traits ~loc_ ~supers trait =
+    let supers = trait :: supers in
     match Global_env.All_types.find_trait_by_path types trait with
     | None -> ()
     | Some trait_decl ->
-        Lst.iter trait_decl.supers (fun new_trait ->
+        Lst.iter trait_decl.supers ~f:(fun new_trait ->
             if not (H.mem visited new_trait) then
+              let src_ : Tvar_env.constraint_src =
+                match supers with [] -> Direct | _ :: _ -> Super_traits supers
+              in
               let new_c : Tvar_env.type_constraint =
-                { trait = new_trait; loc_; required_by_ }
+                { trait = new_trait; loc_; src_ }
               in
               let () = H.add visited new_trait in
               let () = Vec.push closure new_c in
-              add_super_traits ~loc_ ~required_by_ new_trait)
+              add_super_traits ~loc_ ~supers new_trait)
   in
-  Lst.iter constraints (fun c ->
-      add_super_traits c.trait ~loc_:c.loc_ ~required_by_:[]);
+  Lst.iter constraints ~f:(fun c ->
+      add_super_traits c.trait ~loc_:c.loc_ ~supers:[]);
   Vec.to_list closure

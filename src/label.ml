@@ -37,20 +37,22 @@ module Label = struct
     let _ = sexp_of_t
 
     let equal =
-      (fun a__006_ b__007_ ->
-         if Stdlib.( == ) a__006_ b__007_ then true
-         else Stdlib.( = ) (a__006_.stamp : int) b__007_.stamp
+      (fun a__006_ ->
+         fun b__007_ ->
+          if Stdlib.( == ) a__006_ b__007_ then true
+          else Stdlib.( = ) (a__006_.stamp : int) b__007_.stamp
         : t -> t -> bool)
 
     let _ = equal
 
     let (hash_fold_t : Ppx_base.state -> t -> Ppx_base.state) =
-     fun hsv arg ->
-      let hsv =
-        let hsv = hsv in
-        hsv
-      in
-      Ppx_base.hash_fold_int hsv arg.stamp
+     fun hsv ->
+      fun arg ->
+       let hsv =
+         let hsv = hsv in
+         hsv
+       in
+       Ppx_base.hash_fold_int hsv arg.stamp
 
     let _ = hash_fold_t
 
@@ -65,9 +67,10 @@ module Label = struct
     let _ = hash
 
     let compare =
-      (fun a__008_ b__009_ ->
-         if Stdlib.( == ) a__008_ b__009_ then 0
-         else Stdlib.compare (a__008_.stamp : int) b__009_.stamp
+      (fun a__008_ ->
+         fun b__009_ ->
+          if Stdlib.( == ) a__008_ b__009_ then 0
+          else Stdlib.compare (a__008_.stamp : int) b__009_.stamp
         : t -> t -> int)
 
     let _ = compare
@@ -82,6 +85,9 @@ let rename t = { name = t.name; stamp = Basic_uuid.next () }
 
 let to_wasm_name (t : t) =
   Stdlib.String.concat "" [ "$"; t.name; "/"; Int.to_string t.stamp ]
+
+let to_string t = t.name ^ "/" ^ string_of_int t.stamp
+let basename t = t.name
 
 let to_wasm_label_loop t =
   let x = t.stamp in

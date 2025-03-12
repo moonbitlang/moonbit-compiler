@@ -34,7 +34,7 @@ let logxor = Int32.logxor
 let shift_left = Int32.shift_left
 let shift_right = Int32.shift_right_logical
 let to_int32 x = x
-let of_int32 (x : int32) : t = x
+let of_int32 (x : int32) = (x : t)
 let min x y = match compare x y with -1 -> x | _ -> y
 let max x y = match compare x y with 1 -> x | _ -> y
 

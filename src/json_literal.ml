@@ -27,90 +27,95 @@ let string : json_constructor = "String"
 let array : json_constructor = "Array"
 let object_ : json_constructor = "Object"
 
-let get_json_constr_tag ~global_env ~diagnostics constr_name ~action ~loc =
+let get_json_constr_info ~global_env ~diagnostics constr_name ~action ~loc =
   match Global_env.find_type_by_path global_env type_path_json with
-  | Some { ty_desc = Variant_type constrs; _ } -> (
-      match
-        Lst.find_first constrs (fun constr -> constr.constr_name = constr_name)
-      with
-      | None -> Typeutil.unknown_tag
-      | Some constr -> constr.cs_tag)
-  | Some _ -> Typeutil.unknown_tag
+  | Some { ty_desc = Variant_type constrs; _ } ->
+      Lst.find_first constrs (fun constr -> constr.constr_name = constr_name)
+  | Some _ -> None
   | None ->
       Typeutil.add_local_typing_error diagnostics
         (Errors.pkg_not_imported ~name:"moonbitlang/core/json"
            ~action:
-             (action ^ " of type " ^ Type_path_util.name type_path_json
+             ((action ^ " of type " ^ Type_path_util.name type_path_json
                : Stdlib.String.t)
+               [@merlin.hide])
            ~loc);
-      Typeutil.unknown_tag
+      None
 
-let make_json_pat ~global_env ~diagnostics constr_name args ~loc : Typedtree.pat
-    =
-  let args =
-    Lst.mapi args (fun pos pat : Typedtree.constr_pat_arg ->
-        Constr_pat_arg { pat; kind = Positional; pos })
-  in
-  Tpat_constr
-    {
-      constr =
-        {
-          constr_name = { name = constr_name; loc_ = Loc.no_location };
-          extra_info = No_extra_info;
-          loc_ = Loc.no_location;
-        };
-      args;
-      tag =
-        get_json_constr_tag ~global_env ~diagnostics constr_name ~loc
-          ~action:"destruct value";
-      ty = Stype.json;
-      used_error_subtyping = false;
-      loc_ = Loc.no_location;
-    }
+let make_json_pat ~global_env ~diagnostics constr_name args ~loc =
+  (let args =
+     Lst.mapi args (fun pos ->
+         fun pat ->
+          (Constr_pat_arg { pat; kind = Positional; pos }
+            : Typedtree.constr_pat_arg))
+   in
+   match
+     get_json_constr_info ~global_env ~diagnostics constr_name ~loc
+       ~action:"destruct value"
+   with
+   | Some { cs_tag; cs_args; cs_arity_; _ } ->
+       Tpat_constr
+         {
+           type_name = None;
+           constr = { name = constr_name; loc_ = Loc.no_location };
+           args;
+           tag = cs_tag;
+           ty = Stype.json;
+           used_error_subtyping = false;
+           arity_ = cs_arity_;
+           all_args_ = cs_args;
+           loc_ = loc;
+         }
+   | None -> Tpat_any { ty = Stype.json; loc_ = loc }
+    : Typedtree.pat)
 
-let make_json_const_expr ~global_env ~diagnostics constr_name ~loc :
-    Typedtree.expr =
-  Texpr_constr
-    {
-      constr =
-        {
-          constr_name = { name = constr_name; loc_ = Loc.no_location };
-          extra_info = No_extra_info;
-          loc_ = Loc.no_location;
-        };
-      tag =
-        get_json_constr_tag ~global_env ~diagnostics constr_name ~loc
-          ~action:"create value";
-      ty = Stype.json;
-      arity_ = Fn_arity.simple 0;
-      loc_ = loc;
-    }
+let make_json_const_expr ~global_env ~diagnostics constr_name ~loc =
+  (let tag =
+     match
+       get_json_constr_info ~global_env ~diagnostics constr_name ~loc
+         ~action:"create value"
+     with
+     | Some { cs_tag; _ } -> cs_tag
+     | None -> Typeutil.unknown_tag
+   in
+   Texpr_constr
+     {
+       type_name = None;
+       constr = { name = constr_name; loc_ = Loc.no_location };
+       tag;
+       ty = Stype.json;
+       arity_ = Fn_arity.simple 0;
+       loc_ = loc;
+     }
+    : Typedtree.expr)
 
-let make_json_expr ~global_env ~diagnostics constr_name arg ~loc :
-    Typedtree.expr =
-  Texpr_apply
-    {
-      func =
-        Texpr_constr
-          {
-            constr =
-              {
-                constr_name = { name = constr_name; loc_ = Loc.no_location };
-                extra_info = No_extra_info;
-                loc_ = Loc.no_location;
-              };
-            tag =
-              get_json_constr_tag ~global_env ~diagnostics constr_name ~loc
-                ~action:"create value";
-            ty =
-              Builtin.type_arrow
-                [ Typedtree_util.type_of_typed_expr arg ]
-                Stype.json ~err_ty:None;
-            arity_ = Fn_arity.simple 1;
-            loc_ = Loc.no_location;
-          };
-      args = [ { arg_value = arg; arg_kind = Positional } ];
-      ty = Stype.json;
-      kind_ = Normal;
-      loc_ = loc;
-    }
+let make_json_expr ~global_env ~diagnostics constr_name arg ~loc =
+  (let tag =
+     match
+       get_json_constr_info ~global_env ~diagnostics constr_name ~loc
+         ~action:"create value"
+     with
+     | Some { cs_tag; _ } -> cs_tag
+     | None -> Typeutil.unknown_tag
+   in
+   Texpr_apply
+     {
+       func =
+         Texpr_constr
+           {
+             type_name = None;
+             constr = { name = constr_name; loc_ = Loc.no_location };
+             tag;
+             ty =
+               Builtin.type_arrow
+                 [ Typedtree_util.type_of_typed_expr arg ]
+                 Stype.json ~err_ty:None ~is_async:false;
+             arity_ = Fn_arity.simple 1;
+             loc_ = Loc.no_location;
+           };
+       args = [ { arg_value = arg; arg_kind = Positional } ];
+       ty = Stype.json;
+       kind_ = Normal;
+       loc_ = loc;
+     }
+    : Typedtree.expr)

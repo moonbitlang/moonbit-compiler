@@ -13,7 +13,6 @@
 *)
 
 
-let rec power_2_above x n =
-  if x >= n then x
-  else if x * 2 > Sys.max_array_length then x
-  else power_2_above (x * 2) n
+type relocatable_pc = int ref * int
+
+let absolute_pc_of ((base, offset) : relocatable_pc) = base.contents + offset

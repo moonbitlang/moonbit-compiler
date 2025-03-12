@@ -13,50 +13,23 @@
 *)
 
 
-module Vec = Basic_vec
-module Token_triple = Lex_token_triple
-module Vec_token = Lex_vec_token
-
-type state = { mutable cur : int; tokens : Token_triple.t array; len : int }
-
-let bump_any state : unit = state.cur <- state.cur + 1
-
-let rec peek state : Token_triple.t =
-  if state.cur >= state.len then
-    let _, posa, posb = state.tokens.(state.cur - 1) in
-    (EOF, posa, posb)
-  else
-    let ((t, _, _) as res) = state.tokens.(state.cur) in
-    if t = NEWLINE then (
-      bump_any state;
-      peek state)
-    else res
-
 type directive = (string * string) list
 
-let parse_directive state : directive =
-  let parse_entry start s =
-    Basic_strutil.split_on_first ':'
-      (String.sub s start (String.length s - start))
-  in
-  let rec go acc =
-    match peek state with
-    | COMMENT s, _, _ when String.starts_with s.content ~prefix:"//!" ->
-        bump_any state;
-        go
-          (let k, v = parse_entry 3 s.content in
-           (k, v) :: acc)
-    | _ -> acc
-  in
-  List.rev (go [])
+let parse_directive segment =
+  (let parse_entry start s =
+     Basic_strutil.split_on_first ':'
+       (String.sub s start (String.length s - start))
+   in
+   let rec go acc =
+     match Parsing_segment.peek ~comment:true segment with
+     | COMMENT s, _, _ when String.starts_with s.content ~prefix:"//!" ->
+         Parsing_segment.skip ~comment:true segment;
+         go
+           (let k, v = parse_entry 3 s.content in
+            (k, v) :: acc)
+     | _ -> acc
+   in
+   List.rev (go [])
+    : directive)
 
-let parse (tokens : Vec_token.t) : directive * int =
-  let state : state =
-    {
-      cur = 0;
-      tokens = Vec.unsafe_internal_array tokens;
-      len = Vec.length tokens;
-    }
-  in
-  let directive = parse_directive state in
-  (directive, state.cur)
+let parse (segment : Parsing_segment.t) = (parse_directive segment : directive)

@@ -20,6 +20,8 @@ type t =
   | Bool
   | Unit
   | Byte
+  | Int16
+  | UInt16
   | Int64
   | UInt64
   | Float
@@ -27,36 +29,6 @@ type t =
 
 include struct
   let _ = fun (_ : t) -> ()
-  let equal = (Stdlib.( = ) : t -> t -> bool)
-  let _ = equal
-
-  let (hash_fold_t : Ppx_base.state -> t -> Ppx_base.state) =
-    (fun hsv arg ->
-       Ppx_base.hash_fold_int hsv
-         (match arg with
-         | Int -> 0
-         | Uint -> 1
-         | Char -> 2
-         | Bool -> 3
-         | Unit -> 4
-         | Byte -> 5
-         | Int64 -> 6
-         | UInt64 -> 7
-         | Float -> 8
-         | Double -> 9)
-      : Ppx_base.state -> t -> Ppx_base.state)
-
-  let _ = hash_fold_t
-
-  let (hash : t -> Ppx_base.hash_value) =
-    let func arg =
-      Ppx_base.get_hash_value
-        (let hsv = Ppx_base.create () in
-         hash_fold_t hsv arg)
-    in
-    fun x -> func x
-
-  let _ = hash
 
   let sexp_of_t =
     (function
@@ -66,6 +38,8 @@ include struct
      | Bool -> S.Atom "Bool"
      | Unit -> S.Atom "Unit"
      | Byte -> S.Atom "Byte"
+     | Int16 -> S.Atom "Int16"
+     | UInt16 -> S.Atom "UInt16"
      | Int64 -> S.Atom "Int64"
      | UInt64 -> S.Atom "UInt64"
      | Float -> S.Atom "Float"
@@ -74,19 +48,3 @@ include struct
 
   let _ = sexp_of_t
 end
-
-let name = function
-  | Int -> "Int"
-  | Uint -> "Uint"
-  | Char -> "Char"
-  | Bool -> "Bool"
-  | Unit -> "Unit"
-  | Byte -> "Byte"
-  | Int64 -> "Int64"
-  | UInt64 -> "UInt64"
-  | Float -> "Float"
-  | Double -> "Double"
-
-let byte_size = function
-  | Int | Uint | Char | Bool | Unit | Byte | Float -> 4
-  | Int64 | UInt64 | Double -> 8

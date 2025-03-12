@@ -46,10 +46,11 @@ let rec ends_aux s end_ j k =
   else if s.![j] = end_.![k] then ends_aux s end_ (j - 1) (k - 1)
   else -1
 
-let ends_with_index s end_ : int =
-  let s_finish = String.length s - 1 in
-  let s_beg = String.length end_ - 1 in
-  if s_beg > s_finish then -1 else ends_aux s end_ s_finish s_beg
+let ends_with_index s end_ =
+  (let s_finish = String.length s - 1 in
+   let s_beg = String.length end_ - 1 in
+   if s_beg > s_finish then -1 else ends_aux s end_ s_finish s_beg
+    : int)
 
 let ends_with_then_chop s beg =
   let i = ends_with_index s beg in
@@ -113,10 +114,11 @@ let rfind ~sub s =
 let rec unsafe_no_char x ch i last_idx =
   i > last_idx || (x.![i] <> ch && unsafe_no_char x ch (i + 1) last_idx)
 
-let no_char x ch i len : bool =
-  let str_len = String.length x in
-  if i < 0 || i >= str_len || len >= str_len then invalid_arg __FUNCTION__
-  else unsafe_no_char x ch i len
+let no_char x ch i len =
+  (let str_len = String.length x in
+   if i < 0 || i >= str_len || len >= str_len then invalid_arg __FUNCTION__
+   else unsafe_no_char x ch i len
+    : bool)
 
 let no_slash x = unsafe_no_char x '/' 0 (String.length x - 1)
 
@@ -217,19 +219,19 @@ let split_on_last c s =
   go (String.length s - 1) s
 
 let no_need_wasm_mangled s =
-  let rec go i =
-    if i >= String.length s then true
+  let rec go i len =
+    if i >= len then true
     else
-      match s.[i] with
+      match s.![i] with
       | 'A' .. 'Z'
       | 'a' .. 'z'
       | '0' .. '9'
       | '_' | '.' | '*' | '|' | '<' | '>' | '+' | '-' | '@' | ':' | '$' | '!'
       | '=' | '/' ->
-          go (i + 1)
+          go (i + 1) len
       | _ -> false
   in
-  go 0
+  go 0 (String.length s)
 
 let mangle_wasm_name s = if no_need_wasm_mangled s then s else Base64.encode s
 

@@ -62,33 +62,34 @@ module Make (Elt : Diet_intf.ELT) = struct
         let x, y, l' = splitMax l in
         bal x y l' r
 
-  let rec removeAux (t : t) ~lo ~hi : t =
-    match t with
-    | Empty -> Empty
-    | Node n ->
-        if hi <~ n.x then
-          let l = removeAux ~lo ~hi n.l in
-          bal n.x n.y l n.r
-        else if n.y <~ lo then
-          let r = removeAux ~lo ~hi n.r in
-          bal n.x n.y n.l r
-        else if lo <~ n.x && hi <~ n.y then
-          let n' = bal (Elt.succ hi) n.y n.l n.r in
-          removeAux ~lo ~hi:(Elt.pred n.x) n'
-        else if hi >~ n.y && lo >~ n.x then
-          let n' = bal n.x (Elt.pred lo) n.l n.r in
-          removeAux ~lo:(Elt.succ n.y) ~hi n'
-        else if lo <=~ n.x && hi >=~ n.y then
-          let l = removeAux ~lo ~hi:n.x n.l in
-          let r = removeAux ~lo:n.y ~hi n.r in
-          merge l r
-        else if Elt.equal hi n.y then bal n.x (Elt.pred lo) n.l n.r
-        else if Elt.equal lo n.x then bal (Elt.succ hi) n.y n.l n.r
-        else (
-          assert (n.x <~ lo);
-          assert (hi <~ n.y);
-          let r = bal (Elt.succ hi) n.y Empty n.r in
-          bal n.x (Elt.pred lo) n.l r)
+  let rec removeAux (t : t) ~lo ~hi =
+    (match t with
+     | Empty -> Empty
+     | Node n ->
+         if hi <~ n.x then
+           let l = removeAux ~lo ~hi n.l in
+           bal n.x n.y l n.r
+         else if n.y <~ lo then
+           let r = removeAux ~lo ~hi n.r in
+           bal n.x n.y n.l r
+         else if lo <~ n.x && hi <~ n.y then
+           let n' = bal (Elt.succ hi) n.y n.l n.r in
+           removeAux ~lo ~hi:(Elt.pred n.x) n'
+         else if hi >~ n.y && lo >~ n.x then
+           let n' = bal n.x (Elt.pred lo) n.l n.r in
+           removeAux ~lo:(Elt.succ n.y) ~hi n'
+         else if lo <=~ n.x && hi >=~ n.y then
+           let l = removeAux ~lo ~hi:n.x n.l in
+           let r = removeAux ~lo:n.y ~hi n.r in
+           merge l r
+         else if Elt.equal hi n.y then bal n.x (Elt.pred lo) n.l n.r
+         else if Elt.equal lo n.x then bal (Elt.succ hi) n.y n.l n.r
+         else (
+           assert (n.x <~ lo);
+           assert (hi <~ n.y);
+           let r = bal (Elt.succ hi) n.y Empty n.r in
+           bal n.x (Elt.pred lo) n.l r)
+      : t)
 
   let diff a b = fold removeAux b a
   let iter_range = iter_range

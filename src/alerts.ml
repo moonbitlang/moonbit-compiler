@@ -21,13 +21,13 @@ include struct
   let _ = sexp_of_alert_id
 
   let compare_alert_id =
-    (fun a__001_ b__002_ -> Stdlib.compare (a__001_ : string) b__002_
+    (fun a__001_ -> fun b__002_ -> Stdlib.compare (a__001_ : string) b__002_
       : alert_id -> alert_id -> int)
 
   let _ = compare_alert_id
 
   let equal_alert_id =
-    (fun a__003_ b__004_ -> Stdlib.( = ) (a__003_ : string) b__004_
+    (fun a__003_ -> fun b__004_ -> Stdlib.( = ) (a__003_ : string) b__004_
       : alert_id -> alert_id -> bool)
 
   let _ = equal_alert_id
@@ -58,7 +58,8 @@ include struct
   let _ = fun (_ : t) -> ()
 
   let sexp_of_t =
-    (fun { loc = loc__010_; category = category__012_; message = message__014_ } ->
+    (fun { loc = loc__010_; category = category__012_; message = message__014_ }
+     ->
        let bnds__009_ = ([] : _ Stdlib.List.t) in
        let bnds__009_ =
          let arg__015_ = Moon_sexp_conv.sexp_of_string message__014_ in
@@ -80,41 +81,46 @@ include struct
   let _ = sexp_of_t
 
   let compare =
-    (fun a__016_ b__017_ ->
-       if Stdlib.( == ) a__016_ b__017_ then 0
-       else
-         match Loc.compare a__016_.loc b__017_.loc with
-         | 0 -> (
-             match compare_alert_id a__016_.category b__017_.category with
-             | 0 -> Stdlib.compare (a__016_.message : string) b__017_.message
-             | n -> n)
-         | n -> n
+    (fun a__016_ ->
+       fun b__017_ ->
+        if Stdlib.( == ) a__016_ b__017_ then 0
+        else
+          match Loc.compare a__016_.loc b__017_.loc with
+          | 0 -> (
+              match compare_alert_id a__016_.category b__017_.category with
+              | 0 -> Stdlib.compare (a__016_.message : string) b__017_.message
+              | n -> n)
+          | n -> n
       : t -> t -> int)
 
   let _ = compare
 
   let equal =
-    (fun a__018_ b__019_ ->
-       if Stdlib.( == ) a__018_ b__019_ then true
-       else
-         Stdlib.( && )
-           (Loc.equal a__018_.loc b__019_.loc)
-           (Stdlib.( && )
-              (equal_alert_id a__018_.category b__019_.category)
-              (Stdlib.( = ) (a__018_.message : string) b__019_.message))
+    (fun a__018_ ->
+       fun b__019_ ->
+        if Stdlib.( == ) a__018_ b__019_ then true
+        else
+          Stdlib.( && )
+            (Loc.equal a__018_.loc b__019_.loc)
+            (Stdlib.( && )
+               (equal_alert_id a__018_.category b__019_.category)
+               (Stdlib.( = ) (a__018_.message : string) b__019_.message))
       : t -> t -> bool)
 
   let _ = equal
 end
 
-let message ~as_error t : string =
-  let padding len m = String.make (Int.max 0 (len - String.length m)) '0' ^ m in
-  let id = t.category in
-  let leading =
-    if as_error then "Error (Alert " ^ padding 3 id ^ "): "
-    else "Warning (Alert " ^ padding 3 id ^ "): "
-  in
-  leading ^ t.message
+let message ~as_error t =
+  (let padding len m =
+     String.make (Int.max 0 (len - String.length m)) '0' ^ m
+   in
+   let id = t.category in
+   let leading =
+     if as_error then "Error (Alert " ^ padding 3 id ^ "): "
+     else "Warning (Alert " ^ padding 3 id ^ "): "
+   in
+   leading ^ t.message
+    : string)
 
 let alerts = Hashtbl.create 10
 let post_process = ref None
@@ -134,43 +140,44 @@ let register_alert id =
     Hashtbl.add alerts id Warning;
     match !post_process with Some f -> f id | None -> ())
 
-let parse_options s : unit =
-  let enable id =
-    match Hashtbl.find_opt alerts id with
-    | Some Disabled | None -> Hashtbl.replace alerts id Warning
-    | _ -> ()
-  in
-  let disable id = Hashtbl.replace alerts id Disabled in
-  let enable_as_error id = Hashtbl.replace alerts id Error in
-  let error msg = raise (Arg.Bad ("Ill-formed list of alerts: " ^ msg)) in
-  let unknown_token c = error ("Unexpected token '" ^ String.make 1 c ^ "'") in
-  let rec ident i acc =
-    if i < String.length s then
-      let c = s.[i] in
-      match c with
-      | '0' .. '9' | 'a' .. 'z' | 'A' .. 'Z' | '_' ->
-          ident (i + 1) (acc ^ String.make 1 c)
-      | _ -> (i, acc)
-    else (i, acc)
-  in
-  let rec loop i =
-    if i < String.length s then (
-      let f =
-        match s.[i] with
-        | '+' -> enable
-        | '-' -> disable
-        | '@' -> enable_as_error
-        | _ -> unknown_token s.[i]
-      in
-      let i, id = ident (i + 1) "" in
-      (match id with
-      | "all" | "All" ->
-          Hashtbl.iter (fun k _ -> f k) alerts;
-          post_process := Some f
-      | _ -> f id);
-      loop i)
-  in
-  loop 0
+let parse_options s =
+  (let enable id =
+     match Hashtbl.find_opt alerts id with
+     | Some Disabled | None -> Hashtbl.replace alerts id Warning
+     | _ -> ()
+   in
+   let disable id = Hashtbl.replace alerts id Disabled in
+   let enable_as_error id = Hashtbl.replace alerts id Error in
+   let error msg = raise (Arg.Bad ("Ill-formed list of alerts: " ^ msg)) in
+   let unknown_token c = error ("Unexpected token '" ^ String.make 1 c ^ "'") in
+   let rec ident i acc =
+     if i < String.length s then
+       let c = s.[i] in
+       match c with
+       | '0' .. '9' | 'a' .. 'z' | 'A' .. 'Z' | '_' ->
+           ident (i + 1) (acc ^ String.make 1 c)
+       | _ -> (i, acc)
+     else (i, acc)
+   in
+   let rec loop i =
+     if i < String.length s then (
+       let f =
+         match s.[i] with
+         | '+' -> enable
+         | '-' -> disable
+         | '@' -> enable_as_error
+         | _ -> unknown_token s.[i]
+       in
+       let i, id = ident (i + 1) "" in
+       (match id with
+       | "all" | "All" ->
+           Hashtbl.iter (fun k -> fun _ -> f k) alerts;
+           post_process := Some f
+       | _ -> f id);
+       loop i)
+   in
+   loop 0
+    : unit)
 
 let default_alerts = "+all-raise-throw-unsafe+deprecated"
 let () = parse_options default_alerts

@@ -17,15 +17,16 @@ module Menhir_token = Lex_menhir_token
 
 type t = Menhir_token.token * Lexing.position * Lexing.position
 
-let sexp_of_t ((tok, a, b) : t) : S.t =
-  S.List
-    [
-      Menhir_token.sexp_of_token tok;
-      Atom
-        (Printf.sprintf "%d:%d-%d:%d" a.pos_lnum
-           (a.pos_cnum - a.pos_bol + 1)
-           b.pos_lnum
-           (b.pos_cnum - b.pos_bol + 1));
-    ]
+let sexp_of_t ((tok, a, b) : t) =
+  (S.List
+     [
+       Menhir_token.sexp_of_token tok;
+       Atom
+         (Printf.sprintf "%d:%d-%d:%d" a.pos_lnum
+            (a.pos_cnum - a.pos_bol + 1)
+            b.pos_lnum
+            (b.pos_cnum - b.pos_bol + 1));
+     ]
+    : S.t)
 
 let null : t = (Menhir_token.EOF, Lexing.dummy_pos, Lexing.dummy_pos)

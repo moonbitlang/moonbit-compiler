@@ -17,20 +17,23 @@ module Ltype = Ltype_gc
 module Tid = Basic_ty_ident
 module Hash_tid = Basic_ty_ident.Hash
 
-let get_arr_elem (tid : Tid.t) (type_defs : Ltype.type_defs) : Ltype.t =
-  if Tid.equal tid Ltype.tid_bytes then I32_Byte
-  else
-    match Hash_tid.find_exn type_defs tid with
-    | Ref_array { elem } -> elem
-    | Ref_struct _ | Ref_late_init_struct _ | Ref_closure _
-    | Ref_closure_abstract _ | Ref_object _ | Ref_constructor _ ->
-        assert false
+let get_arr_elem (tid : Tid.t) (type_defs : Ltype.type_defs) =
+  (if Tid.equal tid Ltype.tid_bytes then Ltype.i32_byte
+   else
+     match Hash_tid.find_exn type_defs tid with
+     | Ref_array { elem } -> elem
+     | Ref_concrete_object _ -> assert false
+     | Ref_closure_abstract _ -> assert false
+     | Ref_late_init_struct _ -> assert false
+     | Ref_struct _ -> assert false
+     | Ref_closure _ -> assert false
+     | Ref_object _ -> assert false
+     | Ref_constructor _ -> assert false
+    : Ltype.t)
 
 let is_non_nullable_ref_type (ty : Ltype.t) =
   match ty with
-  | I32_Int | I32_Char | I32_Bool | I32_Unit | I32_Byte | I32_Tag
-  | I32_Option_Char | I64 | F32 | F64 ->
-      false
+  | I32 _ | I64 | F32 | F64 -> false
   | Ref_nullable _ -> false
   | Ref_lazy_init _ | Ref _ | Ref_extern | Ref_string | Ref_bytes | Ref_func
   | Ref_any ->

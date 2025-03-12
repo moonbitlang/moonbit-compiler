@@ -37,95 +37,107 @@ let sub (s : string) ofs len =
   let epos = get_index spos len in
   String.sub s spos (epos - spos)
 
-let unsafe_utf8_of_string (s : string) slen (a : int array) : int =
-  let spos = ref 0 in
-  let apos = ref 0 in
-  while !spos < slen do
-    let spos_code = s.![!spos] in
-    (match spos_code with
-    | '\000' .. '\127' as c ->
-        a.!(!apos) <- Char.code c;
-        incr spos
-    | '\192' .. '\223' as c ->
-        let n1 = Char.code c in
-        let n2 = Char.code s.![!spos + 1] in
-        if n2 lsr 6 <> 0b10 then raise MalFormed;
-        a.!(!apos) <- ((n1 land 0x1f) lsl 6) lor (n2 land 0x3f);
-        spos := !spos + 2
-    | '\224' .. '\239' as c ->
-        let n1 = Char.code c in
-        let n2 = Char.code s.![!spos + 1] in
-        let n3 = Char.code s.![!spos + 2] in
-        let p =
-          ((n1 land 0x0f) lsl 12) lor ((n2 land 0x3f) lsl 6) lor (n3 land 0x3f)
-        in
-        if (n2 lsr 6 <> 0b10 || n3 lsr 6 <> 0b10) || (p >= 0xd800 && p <= 0xdfff)
-        then raise MalFormed;
-        a.!(!apos) <- p;
-        spos := !spos + 3
-    | '\240' .. '\247' as c ->
-        let n1 = Char.code c in
-        let n2 = Char.code s.![!spos + 1] in
-        let n3 = Char.code s.![!spos + 2] in
-        let n4 = Char.code s.![!spos + 3] in
-        if n2 lsr 6 <> 0b10 || n3 lsr 6 <> 0b10 || n4 lsr 6 <> 0b10 then
-          raise MalFormed;
-        let p =
-          ((n1 land 0x07) lsl 18)
-          lor ((n2 land 0x3f) lsl 12)
-          lor ((n3 land 0x3f) lsl 6)
-          lor (n4 land 0x3f)
-        in
-        if p > 0x10ffff then raise MalFormed;
-        a.!(!apos) <- p;
-        spos := !spos + 4
-    | _ -> raise MalFormed);
-    incr apos
-  done;
-  !apos
+let unsafe_utf8_of_string ~offset ~len (s : string) (a : int array) =
+  (let spos = ref offset in
+   let apos = ref 0 in
+   let end_ = offset + len in
+   while !spos < end_ do
+     let spos_code = s.![!spos] in
+     (match spos_code with
+     | '\000' .. '\127' as c ->
+         a.!(!apos) <- Char.code c;
+         incr spos
+     | '\192' .. '\223' as c ->
+         let n1 = Char.code c in
+         let n2 = Char.code s.![!spos + 1] in
+         if n2 lsr 6 <> 0b10 then raise MalFormed;
+         a.!(!apos) <- ((n1 land 0x1f) lsl 6) lor (n2 land 0x3f);
+         spos := !spos + 2
+     | '\224' .. '\239' as c ->
+         let n1 = Char.code c in
+         let n2 = Char.code s.![!spos + 1] in
+         let n3 = Char.code s.![!spos + 2] in
+         let p =
+           ((n1 land 0x0f) lsl 12) lor ((n2 land 0x3f) lsl 6) lor (n3 land 0x3f)
+         in
+         if
+           (n2 lsr 6 <> 0b10 || n3 lsr 6 <> 0b10) || (p >= 0xd800 && p <= 0xdfff)
+         then raise MalFormed;
+         a.!(!apos) <- p;
+         spos := !spos + 3
+     | '\240' .. '\247' as c ->
+         let n1 = Char.code c in
+         let n2 = Char.code s.![!spos + 1] in
+         let n3 = Char.code s.![!spos + 2] in
+         let n4 = Char.code s.![!spos + 3] in
+         if n2 lsr 6 <> 0b10 || n3 lsr 6 <> 0b10 || n4 lsr 6 <> 0b10 then
+           raise MalFormed;
+         let p =
+           ((n1 land 0x07) lsl 18)
+           lor ((n2 land 0x3f) lsl 12)
+           lor ((n3 land 0x3f) lsl 6)
+           lor (n4 land 0x3f)
+         in
+         if p > 0x10ffff then raise MalFormed;
+         a.!(!apos) <- p;
+         spos := !spos + 4
+     | _ -> raise MalFormed);
+     incr apos
+   done;
+   !apos
+    : int)
+
+let from_sub_string s ~offset ~len =
+  if offset < 0 || len < 0 || offset + len > String.length s then
+    invalid_arg __FUNCTION__;
+  let a = Array.make len 0 in
+  let len = unsafe_utf8_of_string ~offset ~len s a in
+  Vec_int.of_sub_array a 0 len
 
 let from_string s =
   let slen = String.length s in
   let a = Array.make slen 0 in
-  let len = unsafe_utf8_of_string s slen a in
+  let len = unsafe_utf8_of_string ~offset:0 ~len:slen s a in
   Vec_int.of_sub_array a 0 len
 
 let unsafe_string_of_utf8 (a : int array) ~(offset : int) ~(len : int)
-    (b : bytes) : int =
-  let apos = ref offset in
-  let len = ref len in
-  let i = ref 0 in
-  while !len > 0 do
-    let u = a.!(!apos) in
-    if u < 0 then raise MalFormed
-    else if u <= 0x007F then (
-      b.![!i] <- Char.unsafe_chr u;
-      incr i)
-    else if u <= 0x07FF then (
-      b.![!i] <- Char.unsafe_chr (0xC0 lor (u lsr 6));
-      b.![!i + 1] <- Char.unsafe_chr (0x80 lor (u land 0x3F));
-      i := !i + 2)
-    else if u <= 0xFFFF then (
-      b.![!i] <- Char.unsafe_chr (0xE0 lor (u lsr 12));
-      b.![!i + 1] <- Char.unsafe_chr (0x80 lor ((u lsr 6) land 0x3F));
-      b.![!i + 2] <- Char.unsafe_chr (0x80 lor (u land 0x3F));
-      i := !i + 3)
-    else if u <= 0x10FFFF then (
-      b.![!i] <- Char.unsafe_chr (0xF0 lor (u lsr 18));
-      b.![!i + 1] <- Char.unsafe_chr (0x80 lor ((u lsr 12) land 0x3F));
-      b.![!i + 2] <- Char.unsafe_chr (0x80 lor ((u lsr 6) land 0x3F));
-      b.![!i + 3] <- Char.unsafe_chr (0x80 lor (u land 0x3F));
-      i := !i + 4)
-    else raise MalFormed;
-    incr apos;
-    decr len
-  done;
-  !i
+    (b : bytes) =
+  (let apos = ref offset in
+   let len = ref len in
+   let i = ref 0 in
+   while !len > 0 do
+     let u = a.!(!apos) in
+     if u < 0 then raise MalFormed
+     else if u <= 0x007F then (
+       b.![!i] <- Char.unsafe_chr u;
+       incr i)
+     else if u <= 0x07FF then (
+       b.![!i] <- Char.unsafe_chr (0xC0 lor (u lsr 6));
+       b.![!i + 1] <- Char.unsafe_chr (0x80 lor (u land 0x3F));
+       i := !i + 2)
+     else if u <= 0xFFFF then (
+       b.![!i] <- Char.unsafe_chr (0xE0 lor (u lsr 12));
+       b.![!i + 1] <- Char.unsafe_chr (0x80 lor ((u lsr 6) land 0x3F));
+       b.![!i + 2] <- Char.unsafe_chr (0x80 lor (u land 0x3F));
+       i := !i + 3)
+     else if u <= 0x10FFFF then (
+       b.![!i] <- Char.unsafe_chr (0xF0 lor (u lsr 18));
+       b.![!i + 1] <- Char.unsafe_chr (0x80 lor ((u lsr 12) land 0x3F));
+       b.![!i + 2] <- Char.unsafe_chr (0x80 lor ((u lsr 6) land 0x3F));
+       b.![!i + 3] <- Char.unsafe_chr (0x80 lor (u land 0x3F));
+       i := !i + 4)
+     else raise MalFormed;
+     incr apos;
+     decr len
+   done;
+   !i
+    : int)
 
-let string_of_utf8 (lexbuf : int array) ~offset ~len : string =
-  let b = Bytes.create (len * 4) in
-  let i = unsafe_string_of_utf8 lexbuf ~offset ~len b in
-  Bytes.sub_string b 0 i
+let string_of_utf8 (lexbuf : int array) ~offset ~len =
+  (let b = Bytes.create (len * 4) in
+   let i = unsafe_string_of_utf8 lexbuf ~offset ~len b in
+   Bytes.sub_string b 0 i
+    : string)
 
 let string_of_vec (v : Vec_int.t) ~offset ~len =
   if offset < 0 || len < 0 || offset + len > v.len then invalid_arg __FUNCTION__

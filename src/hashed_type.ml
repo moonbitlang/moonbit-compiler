@@ -24,12 +24,15 @@ module Hashed_type = struct
         params : t list;
         ret : t;
         err : t option;
+        is_async : bool;
       }
     | Hparam of { hash : int; [@sexp_drop] index : int }
     | Htrait of { hash : int; trait : Type_path.t }
     | Hunit
     | Hbool
     | Hbyte
+    | Hint16
+    | Huint16
     | Hchar
     | Hint
     | Hint64
@@ -70,8 +73,14 @@ module Hashed_type = struct
              params = params__011_;
              ret = ret__013_;
              err = err__015_;
+             is_async = is_async__017_;
            } ->
            let bnds__008_ = ([] : _ Stdlib.List.t) in
+           let bnds__008_ =
+             let arg__018_ = Moon_sexp_conv.sexp_of_bool is_async__017_ in
+             (S.List [ S.Atom "is_async"; arg__018_ ] :: bnds__008_
+               : _ Stdlib.List.t)
+           in
            let bnds__008_ =
              let arg__016_ =
                Moon_sexp_conv.sexp_of_option sexp_of_t err__015_
@@ -97,35 +106,37 @@ module Hashed_type = struct
                : _ Stdlib.List.t)
            in
            S.List (S.Atom "Harrow" :: bnds__008_)
-       | Hparam { hash = hash__018_; index = index__020_ } ->
-           let bnds__017_ = ([] : _ Stdlib.List.t) in
-           let bnds__017_ =
-             let arg__021_ = Moon_sexp_conv.sexp_of_int index__020_ in
-             (S.List [ S.Atom "index"; arg__021_ ] :: bnds__017_
+       | Hparam { hash = hash__020_; index = index__022_ } ->
+           let bnds__019_ = ([] : _ Stdlib.List.t) in
+           let bnds__019_ =
+             let arg__023_ = Moon_sexp_conv.sexp_of_int index__022_ in
+             (S.List [ S.Atom "index"; arg__023_ ] :: bnds__019_
                : _ Stdlib.List.t)
            in
-           let bnds__017_ =
-             let arg__019_ = Moon_sexp_conv.sexp_of_int hash__018_ in
-             (S.List [ S.Atom "hash"; arg__019_ ] :: bnds__017_
+           let bnds__019_ =
+             let arg__021_ = Moon_sexp_conv.sexp_of_int hash__020_ in
+             (S.List [ S.Atom "hash"; arg__021_ ] :: bnds__019_
                : _ Stdlib.List.t)
            in
-           S.List (S.Atom "Hparam" :: bnds__017_)
-       | Htrait { hash = hash__023_; trait = trait__025_ } ->
-           let bnds__022_ = ([] : _ Stdlib.List.t) in
-           let bnds__022_ =
-             let arg__026_ = Type_path.sexp_of_t trait__025_ in
-             (S.List [ S.Atom "trait"; arg__026_ ] :: bnds__022_
+           S.List (S.Atom "Hparam" :: bnds__019_)
+       | Htrait { hash = hash__025_; trait = trait__027_ } ->
+           let bnds__024_ = ([] : _ Stdlib.List.t) in
+           let bnds__024_ =
+             let arg__028_ = Type_path.sexp_of_t trait__027_ in
+             (S.List [ S.Atom "trait"; arg__028_ ] :: bnds__024_
                : _ Stdlib.List.t)
            in
-           let bnds__022_ =
-             let arg__024_ = Moon_sexp_conv.sexp_of_int hash__023_ in
-             (S.List [ S.Atom "hash"; arg__024_ ] :: bnds__022_
+           let bnds__024_ =
+             let arg__026_ = Moon_sexp_conv.sexp_of_int hash__025_ in
+             (S.List [ S.Atom "hash"; arg__026_ ] :: bnds__024_
                : _ Stdlib.List.t)
            in
-           S.List (S.Atom "Htrait" :: bnds__022_)
+           S.List (S.Atom "Htrait" :: bnds__024_)
        | Hunit -> S.Atom "Hunit"
        | Hbool -> S.Atom "Hbool"
        | Hbyte -> S.Atom "Hbyte"
+       | Hint16 -> S.Atom "Hint16"
+       | Huint16 -> S.Atom "Huint16"
        | Hchar -> S.Atom "Hchar"
        | Hint -> S.Atom "Hint"
        | Hint64 -> S.Atom "Hint64"
@@ -141,58 +152,64 @@ module Hashed_type = struct
     let _ = sexp_of_t
 
     let rec (hash_fold_t : Ppx_base.state -> t -> Ppx_base.state) =
-      (fun hsv arg ->
-         match arg with
-         | Hconstr _ir ->
-             let hsv = Ppx_base.hash_fold_int hsv 0 in
-             let hsv =
-               let hsv =
-                 let hsv = hsv in
-                 Ppx_base.hash_fold_int hsv _ir.hash
-               in
-               Type_path.hash_fold_t hsv _ir.tycon
-             in
-             Ppx_base.hash_fold_list hash_fold_t hsv _ir.tys
-         | Harrow _ir ->
-             let hsv = Ppx_base.hash_fold_int hsv 1 in
-             let hsv =
-               let hsv =
-                 let hsv =
-                   let hsv = hsv in
-                   Ppx_base.hash_fold_int hsv _ir.hash
-                 in
-                 Ppx_base.hash_fold_list hash_fold_t hsv _ir.params
-               in
-               hash_fold_t hsv _ir.ret
-             in
-             Ppx_base.hash_fold_option hash_fold_t hsv _ir.err
-         | Hparam _ir ->
-             let hsv = Ppx_base.hash_fold_int hsv 2 in
-             let hsv =
-               let hsv = hsv in
-               Ppx_base.hash_fold_int hsv _ir.hash
-             in
-             Ppx_base.hash_fold_int hsv _ir.index
-         | Htrait _ir ->
-             let hsv = Ppx_base.hash_fold_int hsv 3 in
-             let hsv =
-               let hsv = hsv in
-               Ppx_base.hash_fold_int hsv _ir.hash
-             in
-             Type_path.hash_fold_t hsv _ir.trait
-         | Hunit -> Ppx_base.hash_fold_int hsv 4
-         | Hbool -> Ppx_base.hash_fold_int hsv 5
-         | Hbyte -> Ppx_base.hash_fold_int hsv 6
-         | Hchar -> Ppx_base.hash_fold_int hsv 7
-         | Hint -> Ppx_base.hash_fold_int hsv 8
-         | Hint64 -> Ppx_base.hash_fold_int hsv 9
-         | Huint -> Ppx_base.hash_fold_int hsv 10
-         | Huint64 -> Ppx_base.hash_fold_int hsv 11
-         | Hfloat -> Ppx_base.hash_fold_int hsv 12
-         | Hdouble -> Ppx_base.hash_fold_int hsv 13
-         | Hstring -> Ppx_base.hash_fold_int hsv 14
-         | Hbytes -> Ppx_base.hash_fold_int hsv 15
-         | Hblackhole -> Ppx_base.hash_fold_int hsv 16
+      (fun hsv ->
+         fun arg ->
+          match arg with
+          | Hconstr _ir ->
+              let hsv = Ppx_base.hash_fold_int hsv 0 in
+              let hsv =
+                let hsv =
+                  let hsv = hsv in
+                  Ppx_base.hash_fold_int hsv _ir.hash
+                in
+                Type_path.hash_fold_t hsv _ir.tycon
+              in
+              Ppx_base.hash_fold_list hash_fold_t hsv _ir.tys
+          | Harrow _ir ->
+              let hsv = Ppx_base.hash_fold_int hsv 1 in
+              let hsv =
+                let hsv =
+                  let hsv =
+                    let hsv =
+                      let hsv = hsv in
+                      Ppx_base.hash_fold_int hsv _ir.hash
+                    in
+                    Ppx_base.hash_fold_list hash_fold_t hsv _ir.params
+                  in
+                  hash_fold_t hsv _ir.ret
+                in
+                Ppx_base.hash_fold_option hash_fold_t hsv _ir.err
+              in
+              Ppx_base.hash_fold_bool hsv _ir.is_async
+          | Hparam _ir ->
+              let hsv = Ppx_base.hash_fold_int hsv 2 in
+              let hsv =
+                let hsv = hsv in
+                Ppx_base.hash_fold_int hsv _ir.hash
+              in
+              Ppx_base.hash_fold_int hsv _ir.index
+          | Htrait _ir ->
+              let hsv = Ppx_base.hash_fold_int hsv 3 in
+              let hsv =
+                let hsv = hsv in
+                Ppx_base.hash_fold_int hsv _ir.hash
+              in
+              Type_path.hash_fold_t hsv _ir.trait
+          | Hunit -> Ppx_base.hash_fold_int hsv 4
+          | Hbool -> Ppx_base.hash_fold_int hsv 5
+          | Hbyte -> Ppx_base.hash_fold_int hsv 6
+          | Hint16 -> Ppx_base.hash_fold_int hsv 7
+          | Huint16 -> Ppx_base.hash_fold_int hsv 8
+          | Hchar -> Ppx_base.hash_fold_int hsv 9
+          | Hint -> Ppx_base.hash_fold_int hsv 10
+          | Hint64 -> Ppx_base.hash_fold_int hsv 11
+          | Huint -> Ppx_base.hash_fold_int hsv 12
+          | Huint64 -> Ppx_base.hash_fold_int hsv 13
+          | Hfloat -> Ppx_base.hash_fold_int hsv 14
+          | Hdouble -> Ppx_base.hash_fold_int hsv 15
+          | Hstring -> Ppx_base.hash_fold_int hsv 16
+          | Hbytes -> Ppx_base.hash_fold_int hsv 17
+          | Hblackhole -> Ppx_base.hash_fold_int hsv 18
         : Ppx_base.state -> t -> Ppx_base.state)
 
     and (hash : t -> Ppx_base.hash_value) =
@@ -214,8 +231,8 @@ module Hashed_type = struct
     | Hparam { hash; _ }
     | Htrait { hash; _ } ->
         hash
-    | Hunit | Hbool | Hbyte | Hchar | Hint | Hint64 | Huint | Huint64 | Hfloat
-    | Hdouble | Hstring | Hbytes | Hblackhole ->
+    | Hunit | Hbool | Hbyte | Hint16 | Huint16 | Hchar | Hint | Hint64 | Huint
+    | Huint64 | Hfloat | Hdouble | Hstring | Hbytes | Hblackhole ->
         hash t
 
   let hash_fold_t hsv t = Ppx_base.hash_fold_int hsv (hash t)
@@ -228,11 +245,13 @@ module Hashed_type = struct
             Type_path.equal p1 p2
             && Lst.for_all2_no_exn tys1 tys2 Basic_prelude.phys_equal
         | _ -> false)
-    | Harrow { hash = _; params = ps1; ret = r1; err = e1 } -> (
+    | Harrow { hash = _; params = ps1; ret = r1; err = e1; is_async = a1 } -> (
         match t2 with
-        | Harrow { hash = _; params = ps2; ret = r2; err = e2 } -> (
+        | Harrow { hash = _; params = ps2; ret = r2; err = e2; is_async = a2 }
+          -> (
             Lst.for_all2_no_exn ps1 ps2 Basic_prelude.phys_equal
             && Basic_prelude.phys_equal r1 r2
+            && a1 = a2
             &&
             match (e1, e2) with
             | None, None -> true
@@ -248,6 +267,8 @@ module Hashed_type = struct
     | Hunit -> ( match t2 with Hunit -> true | _ -> false)
     | Hbool -> ( match t2 with Hbool -> true | _ -> false)
     | Hbyte -> ( match t2 with Hbyte -> true | _ -> false)
+    | Hint16 -> ( match t2 with Hint16 -> true | _ -> false)
+    | Huint16 -> ( match t2 with Huint16 -> true | _ -> false)
     | Hchar -> ( match t2 with Hchar -> true | _ -> false)
     | Hint -> ( match t2 with Hint -> true | _ -> false)
     | Hint64 -> ( match t2 with Hint64 -> true | _ -> false)
@@ -267,7 +288,7 @@ let equal (t1 : t) (t2 : t) = Basic_prelude.phys_equal t1 t2
 
 type cache = Hashset.t
 
-let make_cache () : cache = Hashset.create 42
+let make_cache () = (Hashset.create 42 : cache)
 
 let constr cache tycon tys =
   let hsv = Ppx_base.create () in
@@ -278,13 +299,16 @@ let constr cache tycon tys =
   Hashset.find_or_add cache t
 [@@inline]
 
-let arrow cache params ret err =
+let arrow cache params ret err ~is_async =
   let hsv = Ppx_base.create () in
   let hsv = Ppx_base.hash_fold_int hsv 1 in
+  let hsv = Ppx_base.hash_fold_bool hsv is_async in
   let hsv = Lst.fold_left params hsv hash_fold_t in
   let hsv = hash_fold_t hsv ret in
   let hsv = match err with None -> hsv | Some err -> hash_fold_t hsv err in
-  let t = Harrow { hash = Ppx_base.get_hash_value hsv; params; ret; err } in
+  let t =
+    Harrow { hash = Ppx_base.get_hash_value hsv; params; ret; err; is_async }
+  in
   Hashset.find_or_add cache t
 [@@inline]
 
@@ -309,11 +333,12 @@ exception Unresolved_type_variable
 let rec of_stype cache (sty : Stype.t) =
   let go sty = of_stype cache sty [@@inline] in
   match sty with
-  | Tarrow { params_ty; ret_ty; err_ty } ->
-      arrow cache (List.map go params_ty) (go ret_ty)
+  | Tarrow { params_ty; ret_ty; err_ty; is_async } ->
+      arrow cache (Lst.map params_ty go) (go ret_ty)
         (match err_ty with None -> None | Some e -> Some (go e))
+        ~is_async
   | T_constr { type_constructor; tys } ->
-      constr cache type_constructor (List.map go tys)
+      constr cache type_constructor (Lst.map tys go)
   | Tparam { index } -> param cache index
   | T_trait t -> trait cache t
   | Tvar { contents = Tlink sty' } -> go sty'
@@ -322,6 +347,8 @@ let rec of_stype cache (sty : Stype.t) =
   | T_builtin T_bool -> Hbool
   | T_builtin T_byte -> Hbyte
   | T_builtin T_char -> Hchar
+  | T_builtin T_int16 -> Hint16
+  | T_builtin T_uint16 -> Huint16
   | T_builtin T_int -> Hint
   | T_builtin T_int64 -> Hint64
   | T_builtin T_uint -> Huint

@@ -30,9 +30,11 @@ open struct
   and repr = Obj.repr
   and double_array_tag = Obj.double_array_tag
 
-  let fill_with_junk_ (a : _ array) i len : unit =
-    if tag (repr a) = double_array_tag then Array.fill (as_float_arr a) i len 0.
-    else Array.fill (as_obj_arr a) i len (Obj.repr ())
+  let fill_with_junk_ (a : _ array) i len =
+    (if tag (repr a) = double_array_tag then
+       Array.fill (as_float_arr a) i len 0.
+     else Array.fill (as_obj_arr a) i len (Obj.repr ())
+      : unit)
 end
 
 external unsafe_sub : 'a array -> int -> int -> 'a array = "caml_array_sub"
@@ -65,6 +67,7 @@ let sort d cmp =
   d.arr <- arr;
   d.len <- Array.length arr
 
+let of_array src = { len = Array.length src; arr = Array.copy src }
 let reverse_in_place src = Arr.reverse_range src.arr 0 src.len
 
 let iter d f =
@@ -91,7 +94,7 @@ let map_into_array f src =
     done;
     arr
 
-let map_into_list src f =
+let map_into_list src ~unorder:f =
   let src_len = src.len in
   let src_arr = src.arr in
   if src_len = 0 then []
@@ -148,9 +151,22 @@ let set d i v =
 
 let capacity d = Array.length d.arr [@@inline]
 
-let make ~dummy initsize : 'a t =
-  if initsize < 0 then invalid_arg __FUNCTION__;
-  { len = 0; arr = Array.make initsize dummy }
+let map f src =
+  let src_len = src.len in
+  if src_len = 0 then { len = 0; arr = [||] }
+  else
+    let src_arr = src.arr in
+    let first = f src_arr.!(0) in
+    let arr = Array.make src_len first in
+    for i = 1 to src_len - 1 do
+      arr.!(i) <- f src_arr.!(i)
+    done;
+    { len = src_len; arr }
+
+let make ~dummy initsize =
+  (if initsize < 0 then invalid_arg __FUNCTION__;
+   { len = 0; arr = Array.make initsize dummy }
+    : 'a t)
 
 let push (d : 'a t) v =
   let d_len = d.len in
@@ -184,13 +200,14 @@ let insert (d : 'a t) idx elt =
   d.arr.(idx) <- elt;
   d.len <- d.len + 1
 
-let pop_no_compact (d : 'a t) : 'a option =
-  let d_len = d.len in
-  if d_len = 0 then None
-  else
-    let d_arr = d.arr in
-    let last_index = d_len - 1 in
-    let last = d_arr.!(last_index) in
-    fill_with_junk_ d_arr last_index 1;
-    d.len <- last_index;
-    Some last
+let pop_no_compact (d : 'a t) =
+  (let d_len = d.len in
+   if d_len = 0 then None
+   else
+     let d_arr = d.arr in
+     let last_index = d_len - 1 in
+     let last = d_arr.!(last_index) in
+     fill_with_junk_ d_arr last_index 1;
+     d.len <- last_index;
+     Some last
+    : 'a option)

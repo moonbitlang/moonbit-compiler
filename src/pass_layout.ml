@@ -101,44 +101,43 @@ let optimizer =
 
     method! visit_Cexpr_prim (ctx : kind Ident.Map.t) prim args ty loc_ =
       match (prim, args) with
-      | Penum_field _, (Cexpr_var { id; _ } as v) :: [] -> (
+      | Penum_field _, (Cexpr_var { id; ty = enum_ty; _ } as v) :: [] -> (
           match Ident.Map.find_opt ctx id with
           | Some Int -> v
           | Some Int64 -> i64_to_i32 v
           | Some Null -> as_non_null v ty
-          | None -> super#visit_Cexpr_prim ctx prim args ty loc_)
+          | None -> (
+              match Mtype.get_optimized_option_kind enum_ty with
+              | Optimized_to_int -> v
+              | Optimized_to_int64 -> i64_to_i32 v
+              | Optimized_ref -> as_non_null v ty
+              | Not_optimized -> super#visit_Cexpr_prim ctx prim args ty loc_))
+      | Pcast { kind = Enum_to_constr }, v :: [] -> (
+          match Mtype.get_optimized_option_kind (Mcore.type_of_expr v) with
+          | Optimized_to_int | Optimized_ref | Optimized_to_int64 ->
+              self#visit_expr ctx v
+          | Not_optimized -> super#visit_Cexpr_prim ctx prim args ty loc_)
       | _ -> super#visit_Cexpr_prim ctx prim args ty loc_
 
-    method! visit_Cexpr_constr ctx constr tag arg ty loc_ =
+    method! visit_Cexpr_constr ctx tag arg ty loc_ =
       let index = tag.index in
-      match ty with
-      | T_optimized_option { elem } -> (
-          match elem with
-          | T_char | T_byte | T_bool | T_unit -> (
-              match (index, arg) with
-              | 0, _ -> minus_one
-              | 1, a :: [] -> upcast (self#visit_expr ctx a) ty
-              | _ -> assert false)
-          | T_int | T_uint -> (
-              match (index, arg) with
-              | 0, _ -> max_i32_plus_one
-              | 1, a :: [] -> i32_to_i64 (self#visit_expr ctx a)
-              | _ -> assert false)
-          | T_int64 | T_uint64 | T_func _ -> assert false
-          | T_float | T_double | T_any _ | T_optimized_option _
-          | T_maybe_uninit _ | T_error_value_result _ ->
-              assert false
-          | T_string | T_bytes | T_tuple _ | T_fixedarray _ | T_trait _
-          | T_constr _ -> (
-              match (index, arg) with
-              | 0, _ -> null ty
-              | 1, a :: [] -> upcast (self#visit_expr ctx a) ty
-              | _ -> assert false))
-      | T_int | T_char | T_bool | T_unit | T_byte | T_int64 | T_uint | T_uint64
-      | T_float | T_double | T_string | T_bytes | T_func _ | T_tuple _
-      | T_fixedarray _ | T_constr _ | T_trait _ | T_any _ | T_maybe_uninit _
-      | T_error_value_result _ ->
-          super#visit_Cexpr_constr ctx constr tag arg ty loc_
+      match Mtype.get_optimized_option_kind ty with
+      | Optimized_to_int -> (
+          match (index, arg) with
+          | 0, _ -> minus_one
+          | 1, a :: [] -> upcast (self#visit_expr ctx a) ty
+          | _ -> assert false)
+      | Optimized_to_int64 -> (
+          match (index, arg) with
+          | 0, _ -> max_i32_plus_one
+          | 1, a :: [] -> i32_to_i64 (self#visit_expr ctx a)
+          | _ -> assert false)
+      | Optimized_ref -> (
+          match (index, arg) with
+          | 0, _ -> null ty
+          | 1, a :: [] -> upcast (self#visit_expr ctx a) ty
+          | _ -> assert false)
+      | Not_optimized -> super#visit_Cexpr_constr ctx tag arg ty loc_
 
     method! visit_Cexpr_switch_constr ctx obj cases default ty loc_ =
       let ty_obj = Mcore.type_of_expr obj in
@@ -147,34 +146,25 @@ let optimizer =
           ~visit_expr:self#visit_expr
           [@@inline]
       in
-      match ty_obj with
-      | T_optimized_option { elem } -> (
-          match elem with
-          | T_char | T_byte | T_bool | T_unit -> replace_switch_constr Int
-          | T_int | T_uint -> replace_switch_constr Int64
-          | T_int64 | T_uint64 | T_func _ -> assert false
-          | T_float | T_double | T_any _ | T_optimized_option _
-          | T_maybe_uninit _ | T_error_value_result _ ->
-              assert false
-          | T_string | T_bytes | T_tuple _ | T_fixedarray _ | T_trait _
-          | T_constr _ ->
-              replace_switch_constr Null)
-      | T_int | T_char | T_bool | T_unit | T_byte | T_int64 | T_uint | T_uint64
-      | T_float | T_double | T_string | T_bytes | T_func _ | T_tuple _
-      | T_fixedarray _ | T_constr _ | T_trait _ | T_any _ | T_maybe_uninit _
-      | T_error_value_result _ ->
+      match Mtype.get_optimized_option_kind ty_obj with
+      | Optimized_to_int -> replace_switch_constr Int
+      | Optimized_to_int64 -> replace_switch_constr Int64
+      | Optimized_ref -> replace_switch_constr Null
+      | Not_optimized ->
           super#visit_Cexpr_switch_constr ctx obj cases default ty loc_
   end
 
-let optimize_layout (prog : Mcore.t) : Mcore.t =
-  {
-    Mcore.body =
-      Lst.map prog.body (fun top_item ->
-          optimizer#visit_top_item Ident.Map.empty top_item);
-    main =
-      (match prog.main with
-      | Some (expr, loc) -> Some (optimizer#visit_expr Ident.Map.empty expr, loc)
-      | None -> None);
-    types = prog.types;
-    object_methods = prog.object_methods;
-  }
+let optimize_layout (prog : Mcore.t) =
+  ({
+     Mcore.body =
+       Lst.map prog.body (fun top_item ->
+           optimizer#visit_top_item Ident.Map.empty top_item);
+     main =
+       (match prog.main with
+       | Some (expr, loc) ->
+           Some (optimizer#visit_expr Ident.Map.empty expr, loc)
+       | None -> None);
+     types = prog.types;
+     object_methods = prog.object_methods;
+   }
+    : Mcore.t)

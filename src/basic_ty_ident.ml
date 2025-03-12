@@ -27,7 +27,7 @@ include struct
   let _ = sexp_of_t
 
   let equal =
-    (fun a__001_ b__002_ -> Stdlib.( = ) (a__001_ : string) b__002_
+    (fun a__001_ -> fun b__002_ -> Stdlib.( = ) (a__001_ : string) b__002_
       : t -> t -> bool)
 
   let _ = equal
@@ -43,24 +43,26 @@ include struct
   and _ = hash
 end
 
-let of_string (s : string) : t = s
-let to_string (t : t) : string = t
-let to_wasm_name (t : t) : string = "$" ^ Strutil.mangle_wasm_name (to_string t)
+let of_string (s : string) = (s : t)
+let to_string (t : t) = (t : string)
 
-let of_type_path (p : Type_path.t) : t =
-  Type_path.export_name ~cur_pkg_name:!Basic_config.current_package p
+let to_wasm_name (t : t) =
+  ("$" ^ Strutil.mangle_wasm_name (to_string t) : string)
 
-let capture_of_function (addr : Fn_address.t) : t =
-  of_string (Fn_address.to_string addr ^ "-cap")
+let of_type_path (p : Type_path.t) =
+  (Type_path.export_name ~cur_pkg_name:!Basic_config.current_package p : t)
 
-let code_pointer_of_closure (closure_tid : t) : t =
-  of_string (to_string closure_tid ^ "-sig")
+let capture_of_function (addr : Fn_address.t) =
+  (of_string (Fn_address.to_string addr ^ "-cap") : t)
 
-let method_of_object (object_tid : t) method_index : t =
-  (object_tid ^ ".method_" ^ Int.to_string method_index : Stdlib.String.t)
+let code_pointer_of_closure (closure_tid : t) =
+  (of_string (to_string closure_tid ^ "-sig") : t)
 
-let concrete_object_type ~trait ~type_name : t =
-  (type_name ^ ".as_" ^ of_type_path trait : Stdlib.String.t)
+let method_of_object (object_tid : t) method_index =
+  ((object_tid ^ ".method_" ^ Int.to_string method_index : Stdlib.String.t) : t)
+
+let concrete_object_type ~trait ~type_name =
+  ((type_name ^ ".as_" ^ of_type_path trait : Stdlib.String.t) : t)
 
 module Hash = Hashf.Make (struct
   type nonrec t = t

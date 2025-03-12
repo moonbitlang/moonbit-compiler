@@ -14,6 +14,7 @@
 
 
 module Lst = Basic_lst
+module Ident = Basic_ident
 
 let type_of_typed_expr (te : Typedtree.expr) =
   match te with
@@ -54,8 +55,10 @@ let type_of_typed_expr (te : Typedtree.expr) =
   | Texpr_continue { ty; _ }
   | Texpr_interp { ty; _ }
   | Texpr_guard { ty; _ }
-  | Texpr_guard_let { ty; _ } ->
+  | Texpr_guard_let { ty; _ }
+  | Texpr_array_as_view { ty; _ } ->
       ty
+  | Texpr_is _ | Texpr_and _ | Texpr_or _ -> Stype.bool
   | Texpr_unit _ -> Stype.unit
 
 let type_of_pat (pat : Typedtree.pat) =
@@ -76,7 +79,11 @@ let type_of_pat (pat : Typedtree.pat) =
 
 let stype_of_typ (typ : Typedtree.typ) =
   match typ with
-  | Tany { ty; _ } | Tarrow { ty; _ } | T_tuple { ty; _ } | Tname { ty; _ } ->
+  | Tany { ty; _ }
+  | Tarrow { ty; _ }
+  | T_tuple { ty; _ }
+  | Tname { ty; _ }
+  | Tobject { ty; _ } ->
       ty
 
 let rec not_in (name : Basic_ident.t) (fn : Typedtree.expr) =
@@ -105,7 +112,7 @@ let rec not_in (name : Basic_ident.t) (fn : Typedtree.expr) =
       | None -> true
       | Some else_block -> not_in name else_block)
   | Texpr_function { func; _ } -> not_in name func.body
-  | Texpr_loop { params = _; body; args; ty = _ } ->
+  | Texpr_loop { params = _; body; args; ty = _; label = _ } ->
       Lst.for_all args (not_in name) && not_in name body
   | Texpr_if { cond; ifso; ifnot; _ } -> (
       not_in name cond && not_in name ifso
@@ -117,7 +124,8 @@ let rec not_in (name : Basic_ident.t) (fn : Typedtree.expr) =
       not_in name fn.body && not_in name body
   | Texpr_let { rhs; pat_binders = _; body; _ } ->
       not_in name rhs && not_in name body
-  | Texpr_sequence { expr1; expr2; _ } -> not_in name expr1 && not_in name expr2
+  | Texpr_sequence { exprs; last_expr; _ } ->
+      Lst.for_all exprs (not_in name) && not_in name last_expr
   | Texpr_tuple { exprs; _ } -> List.for_all (not_in name) exprs
   | Texpr_record { fields; _ } ->
       Lst.for_all fields (fun (Field_def def) -> not_in name def.expr)
@@ -180,6 +188,52 @@ let rec not_in (name : Basic_ident.t) (fn : Typedtree.expr) =
       | Some otherwise ->
           Lst.for_all otherwise (fun { action; pat_binders = _; _ } ->
               not_in name action))
+  | Texpr_is { expr; _ } -> not_in name expr
+  | Texpr_array_as_view { array; _ } -> not_in name array
+  | Texpr_and { lhs; rhs; _ } | Texpr_or { lhs; rhs; _ } ->
+      not_in name lhs && not_in name rhs
 
 let is_rec (binder : Typedtree.binder) (fn : Typedtree.fn) =
   not (not_in binder.binder_id fn.body)
+
+let free_vars_visitor =
+  object
+    inherit [_] Typedtree.iter
+
+    method! visit_binder (exclude, free_vars) binder =
+      Ident.Hashset.add exclude binder.binder_id;
+      Ident.Hashset.remove free_vars binder.binder_id
+
+    method! visit_var (exclude, free_vars) var =
+      match var.var_id with
+      | Pident _ as id ->
+          if not (Ident.Hashset.mem exclude id) then
+            Ident.Hashset.add free_vars id
+      | Pdot _ | Plocal_method _ | Pdyntrait_method _ -> ()
+  end
+
+let free_vars expr =
+  let exclude = Ident.Hashset.create 7 in
+  let free_vars = Ident.Hashset.create 7 in
+  free_vars_visitor#visit_expr (exclude, free_vars) expr;
+  free_vars
+
+let pat_binders_of_cond (t : Typedtree.expr) =
+  (let rec go (t : Typedtree.expr) (acc : Typedtree.pat_binders) =
+     match t with
+     | Texpr_is { pat_binders; _ } -> List.append pat_binders acc
+     | Texpr_and { lhs; rhs } -> go lhs (go rhs acc)
+     | _ -> acc
+   in
+   go t []
+    : Typedtree.pat_binders)
+
+let cond_contains_is (t : Typedtree.expr) =
+  (let rec go (t : Typedtree.expr) =
+     match t with
+     | Texpr_is _ -> true
+     | Texpr_and { lhs; rhs } | Texpr_or { lhs; rhs } -> go lhs || go rhs
+     | _ -> false
+   in
+   go t
+    : bool)

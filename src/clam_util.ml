@@ -15,10 +15,10 @@
 
 let loc_of_lambda : Clam.lambda -> Loc.t option = function
   | Levent { loc_; _ } -> Some loc_
-  | Lallocate _ | Lclosure _ | Lget_field _ | Lclosure_field _ | Lset_field _
-  | Lmake_array _ | Larray_get_item _ | Larray_set_item _ | Lapply _
-  | Lstub_call _ | Lconst _ | Lif _ | Llet _ | Lletrec _ | Lprim _ | Lsequence _
-  | Ljoinlet _ | Ljoinapply _ | Lbreak _ | Lcontinue _ | Lswitch _
+  | Lallocate _ | Lclosure _ | Lget_raw_func _ | Lget_field _ | Lclosure_field _
+  | Lset_field _ | Lmake_array _ | Larray_get_item _ | Larray_set_item _
+  | Lapply _ | Lstub_call _ | Lconst _ | Lif _ | Llet _ | Lletrec _ | Lprim _
+  | Lsequence _ | Ljoinlet _ | Ljoinapply _ | Lbreak _ | Lcontinue _ | Lswitch _
   | Lswitchint _ | Lswitchstring _ | Lvar _ | Lassign _ | Lcatch _ | Lcast _
   | Lloop _ | Lreturn _ ->
       None

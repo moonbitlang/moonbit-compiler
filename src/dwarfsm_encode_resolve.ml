@@ -77,11 +77,11 @@ struct
     | Import ip -> (
         Vec.push ctx.imports ip;
         match ip.desc with
-        | Func (id, _) -> bind_func id |> ignore
-        | Table (id, _) -> bind_table id |> ignore
-        | Memory (id, _) -> bind_mem id |> ignore
-        | Global (id, _) -> bind_global id |> ignore
-        | Tag (id, _) -> bind_tag id |> ignore)
+        | Func (id, _) -> ignore (bind_func id)
+        | Table (id, _) -> ignore (bind_table id)
+        | Memory (id, _) -> ignore (bind_mem id)
+        | Global (id, _) -> ignore (bind_global id)
+        | Tag (id, _) -> ignore (bind_tag id))
     | _ -> ()
 
   let non_import_field (mf : modulefield) =
@@ -89,11 +89,11 @@ struct
     | Import _ -> ()
     | Rectype rt ->
         Vec.push ctx.types rt;
-        let field ~struct_type_index ((id, _ft) : field) =
-          bind_field struct_type_index id |> ignore
+        let field ~struct_type_index (field : field) =
+          ignore (bind_field struct_type_index field.id)
         in
         let structtype ~index (Struct ft : structtype) =
-          List.iter (field ~struct_type_index:index) ft
+          Basic_lst.iter ft ~f:(field ~struct_type_index:index)
         in
         let comptype ~index (ct : comptype) =
           match ct with Structtype t -> structtype ~index t | _ -> ()
@@ -103,7 +103,7 @@ struct
           let index = bind_type id in
           subtype ~index st
         in
-        List.iter typedef rt
+        Basic_lst.iter rt ~f:typedef
     | Func fn ->
         Vec.push ctx.funcs fn;
         let index = bind_func fn.id in
@@ -111,39 +111,39 @@ struct
           match fn.type_ with Use (_, pts, _) -> pts | Inline (pts, _) -> pts
         in
         let param ~func_index ({ id; _ } : param) =
-          bind_local func_index id |> ignore
+          ignore (bind_local func_index id)
         in
         let local ~func_index ({ id; _ } : local) =
-          bind_local func_index id |> ignore
+          ignore (bind_local func_index id)
         in
-        List.iter (param ~func_index:index) pts;
-        List.iter (local ~func_index:index) fn.locals
+        Basic_lst.iter pts ~f:(param ~func_index:index);
+        Basic_lst.iter fn.locals ~f:(local ~func_index:index)
     | Table t ->
         Vec.push ctx.tables t;
-        bind_table t.id |> ignore
+        ignore (bind_table t.id)
     | Mem m ->
         Vec.push ctx.mems m;
-        bind_mem m.id |> ignore
+        ignore (bind_mem m.id)
     | Global g ->
         Vec.push ctx.globals g;
-        bind_global g.id |> ignore
+        ignore (bind_global g.id)
     | Export ep -> Vec.push ctx.exports ep
     | Start s ->
-        assert (Option.is_none ctx.start);
+        assert (match ctx.start with None -> true | _ -> false);
         ctx.start <- Some s
     | Elem e ->
         Vec.push ctx.elems e;
-        bind_elem e.id |> ignore
+        ignore (bind_elem e.id)
     | Data d ->
         Vec.push ctx.datas d;
-        bind_data d.id |> ignore
+        ignore (bind_data d.id)
     | Tag t ->
         Vec.push ctx.tags t;
-        bind_tag t.id |> ignore
+        ignore (bind_tag t.id)
 
   let module_ (m : module_) =
-    Lst.iter m.fields import_field;
-    Lst.iter m.fields non_import_field
+    Lst.iter m.fields ~f:import_field;
+    Lst.iter m.fields ~f:non_import_field
 end
 
 let resolve ctx module_ =

@@ -197,10 +197,11 @@ end
 
 let interp_content_to_string elems =
   List.fold_left
-    (fun acc elem ->
-      match elem with
-      | Interp_lit { c; _ } -> acc ^ c
-      | Interp_source { source; _ } -> acc ^ "\\{" ^ source ^ "}")
+    (fun acc ->
+      fun elem ->
+       match elem with
+       | Interp_lit { c; _ } -> acc ^ c
+       | Interp_source { source; _ } -> acc ^ "\\{" ^ source ^ "}")
     "" elems
 
 let interp_literal_to_string elems =

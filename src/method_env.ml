@@ -66,6 +66,31 @@ include struct
   let _ = sexp_of_docstring
 end
 
+type method_kind =
+  | Regular_method
+  | Regular_method_qualified
+  | Method_explicit_self of { self_ty : Stype.t }
+
+include struct
+  let _ = fun (_ : method_kind) -> ()
+
+  let sexp_of_method_kind =
+    (function
+     | Regular_method -> S.Atom "Regular_method"
+     | Regular_method_qualified -> S.Atom "Regular_method_qualified"
+     | Method_explicit_self { self_ty = self_ty__004_ } ->
+         let bnds__003_ = ([] : _ Stdlib.List.t) in
+         let bnds__003_ =
+           let arg__005_ = Stype.sexp_of_t self_ty__004_ in
+           (S.List [ S.Atom "self_ty"; arg__005_ ] :: bnds__003_
+             : _ Stdlib.List.t)
+         in
+         S.List (S.Atom "Method_explicit_self" :: bnds__003_)
+      : method_kind -> S.t)
+
+  let _ = sexp_of_method_kind
+end
+
 type method_info = {
   id : Basic_qual_ident.t;
   prim : Primitive.prim option;
@@ -73,7 +98,13 @@ type method_info = {
   pub : bool;
   loc : Loc.t;
   doc_ : docstring; [@sexp_drop_if Docstring.is_empty]
+  attrs : Checked_attributes.t;
   ty_params_ : Tvar_env.t; [@sexp_drop_if Tvar_env.is_empty]
+  kind_ : method_kind;
+      [@sexp_drop_if
+        function
+        | Regular_method | Regular_method_qualified -> true
+        | Method_explicit_self _ -> false]
   arity_ : Fn_arity.t; [@sexp_drop_if Fn_arity.is_simple]
   param_names_ : string list;
 }
@@ -82,175 +113,197 @@ include struct
   let _ = fun (_ : method_info) -> ()
 
   let sexp_of_method_info =
-    (let (drop_if__015_ : docstring -> Stdlib.Bool.t) = Docstring.is_empty
-     and (drop_if__020_ : Tvar_env.t -> Stdlib.Bool.t) = Tvar_env.is_empty
-     and (drop_if__025_ : Fn_arity.t -> Stdlib.Bool.t) = Fn_arity.is_simple in
+    (let (drop_if__018_ : docstring -> Stdlib.Bool.t) = Docstring.is_empty
+     and (drop_if__025_ : Tvar_env.t -> Stdlib.Bool.t) = Tvar_env.is_empty
+     and (drop_if__030_ : method_kind -> Stdlib.Bool.t) = function
+       | Regular_method | Regular_method_qualified -> true
+       | Method_explicit_self _ -> false
+     and (drop_if__035_ : Fn_arity.t -> Stdlib.Bool.t) = Fn_arity.is_simple in
      fun {
-           id = id__004_;
-           prim = prim__006_;
-           typ = typ__008_;
-           pub = pub__010_;
-           loc = loc__012_;
-           doc_ = doc___016_;
-           ty_params_ = ty_params___021_;
-           arity_ = arity___026_;
-           param_names_ = param_names___029_;
+           id = id__007_;
+           prim = prim__009_;
+           typ = typ__011_;
+           pub = pub__013_;
+           loc = loc__015_;
+           doc_ = doc___019_;
+           attrs = attrs__022_;
+           ty_params_ = ty_params___026_;
+           kind_ = kind___031_;
+           arity_ = arity___036_;
+           param_names_ = param_names___039_;
          } ->
-       let bnds__003_ = ([] : _ Stdlib.List.t) in
-       let bnds__003_ =
-         let arg__030_ =
+       let bnds__006_ = ([] : _ Stdlib.List.t) in
+       let bnds__006_ =
+         let arg__040_ =
            Moon_sexp_conv.sexp_of_list Moon_sexp_conv.sexp_of_string
-             param_names___029_
+             param_names___039_
          in
-         (S.List [ S.Atom "param_names_"; arg__030_ ] :: bnds__003_
+         (S.List [ S.Atom "param_names_"; arg__040_ ] :: bnds__006_
            : _ Stdlib.List.t)
        in
-       let bnds__003_ =
-         if drop_if__025_ arity___026_ then bnds__003_
+       let bnds__006_ =
+         if drop_if__035_ arity___036_ then bnds__006_
          else
-           let arg__028_ = Fn_arity.sexp_of_t arity___026_ in
-           let bnd__027_ = S.List [ S.Atom "arity_"; arg__028_ ] in
-           (bnd__027_ :: bnds__003_ : _ Stdlib.List.t)
+           let arg__038_ = Fn_arity.sexp_of_t arity___036_ in
+           let bnd__037_ = S.List [ S.Atom "arity_"; arg__038_ ] in
+           (bnd__037_ :: bnds__006_ : _ Stdlib.List.t)
        in
-       let bnds__003_ =
-         if drop_if__020_ ty_params___021_ then bnds__003_
+       let bnds__006_ =
+         if drop_if__030_ kind___031_ then bnds__006_
          else
-           let arg__023_ = Tvar_env.sexp_of_t ty_params___021_ in
-           let bnd__022_ = S.List [ S.Atom "ty_params_"; arg__023_ ] in
-           (bnd__022_ :: bnds__003_ : _ Stdlib.List.t)
+           let arg__033_ = sexp_of_method_kind kind___031_ in
+           let bnd__032_ = S.List [ S.Atom "kind_"; arg__033_ ] in
+           (bnd__032_ :: bnds__006_ : _ Stdlib.List.t)
        in
-       let bnds__003_ =
-         if drop_if__015_ doc___016_ then bnds__003_
+       let bnds__006_ =
+         if drop_if__025_ ty_params___026_ then bnds__006_
          else
-           let arg__018_ = sexp_of_docstring doc___016_ in
-           let bnd__017_ = S.List [ S.Atom "doc_"; arg__018_ ] in
-           (bnd__017_ :: bnds__003_ : _ Stdlib.List.t)
+           let arg__028_ = Tvar_env.sexp_of_t ty_params___026_ in
+           let bnd__027_ = S.List [ S.Atom "ty_params_"; arg__028_ ] in
+           (bnd__027_ :: bnds__006_ : _ Stdlib.List.t)
        in
-       let bnds__003_ =
-         let arg__013_ = Loc.sexp_of_t loc__012_ in
-         (S.List [ S.Atom "loc"; arg__013_ ] :: bnds__003_ : _ Stdlib.List.t)
+       let bnds__006_ =
+         let arg__023_ = Checked_attributes.sexp_of_t attrs__022_ in
+         (S.List [ S.Atom "attrs"; arg__023_ ] :: bnds__006_ : _ Stdlib.List.t)
        in
-       let bnds__003_ =
-         let arg__011_ = Moon_sexp_conv.sexp_of_bool pub__010_ in
-         (S.List [ S.Atom "pub"; arg__011_ ] :: bnds__003_ : _ Stdlib.List.t)
+       let bnds__006_ =
+         if drop_if__018_ doc___019_ then bnds__006_
+         else
+           let arg__021_ = sexp_of_docstring doc___019_ in
+           let bnd__020_ = S.List [ S.Atom "doc_"; arg__021_ ] in
+           (bnd__020_ :: bnds__006_ : _ Stdlib.List.t)
        in
-       let bnds__003_ =
-         let arg__009_ = Stype.sexp_of_t typ__008_ in
-         (S.List [ S.Atom "typ"; arg__009_ ] :: bnds__003_ : _ Stdlib.List.t)
+       let bnds__006_ =
+         let arg__016_ = Loc.sexp_of_t loc__015_ in
+         (S.List [ S.Atom "loc"; arg__016_ ] :: bnds__006_ : _ Stdlib.List.t)
        in
-       let bnds__003_ =
-         let arg__007_ =
-           Moon_sexp_conv.sexp_of_option Primitive.sexp_of_prim prim__006_
+       let bnds__006_ =
+         let arg__014_ = Moon_sexp_conv.sexp_of_bool pub__013_ in
+         (S.List [ S.Atom "pub"; arg__014_ ] :: bnds__006_ : _ Stdlib.List.t)
+       in
+       let bnds__006_ =
+         let arg__012_ = Stype.sexp_of_t typ__011_ in
+         (S.List [ S.Atom "typ"; arg__012_ ] :: bnds__006_ : _ Stdlib.List.t)
+       in
+       let bnds__006_ =
+         let arg__010_ =
+           Moon_sexp_conv.sexp_of_option Primitive.sexp_of_prim prim__009_
          in
-         (S.List [ S.Atom "prim"; arg__007_ ] :: bnds__003_ : _ Stdlib.List.t)
+         (S.List [ S.Atom "prim"; arg__010_ ] :: bnds__006_ : _ Stdlib.List.t)
        in
-       let bnds__003_ =
-         let arg__005_ = Basic_qual_ident.sexp_of_t id__004_ in
-         (S.List [ S.Atom "id"; arg__005_ ] :: bnds__003_ : _ Stdlib.List.t)
+       let bnds__006_ =
+         let arg__008_ = Basic_qual_ident.sexp_of_t id__007_ in
+         (S.List [ S.Atom "id"; arg__008_ ] :: bnds__006_ : _ Stdlib.List.t)
        in
-       S.List bnds__003_
+       S.List bnds__006_
       : method_info -> S.t)
 
   let _ = sexp_of_method_info
 end
 
-type method_table_entry = Regular of method_info | Impl of method_info list
+type method_table_entry =
+  | Has_regular of { regular : method_info; impls : method_info list }
+  | Only_impl of method_info list
 
 let sexp_of_method_table_entry = function
-  | Regular mi | Impl (mi :: []) -> sexp_of_method_info mi
-  | Impl mis -> List (Atom "Ambiguous" :: List.map sexp_of_method_info mis)
+  | Has_regular { regular = mi; impls = _ } | Only_impl (mi :: []) ->
+      sexp_of_method_info mi
+  | Only_impl mis -> List (Atom "Ambiguous" :: Lst.map mis sexp_of_method_info)
 
-type t = {
-  by_type : method_table_entry M.t H.t;
-  by_name : (type_name * method_info) list M.t;
-}
+type t = method_table_entry M.t H.t
 
-let sexp_of_t t = H.sexp_of_t (M.sexp_of_t sexp_of_method_table_entry) t.by_type
-let empty () : t = { by_type = H.create 17; by_name = M.create 17 }
+let sexp_of_t t = H.sexp_of_t (M.sexp_of_t sexp_of_method_table_entry) t
+let empty () = (H.create 17 : t)
 
 let find_regular_method (env : t) ~(type_name : type_name)
-    ~(method_name : method_name) : method_info option =
-  match H.find_opt env.by_type type_name with
-  | Some method_table -> (
-      match M.find_opt method_table method_name with
-      | Some (Regular mi) -> Some mi
-      | Some (Impl _) | None -> None)
-  | None -> None
+    ~(method_name : method_name) =
+  (match H.find_opt env type_name with
+   | Some method_table -> (
+       match M.find_opt method_table method_name with
+       | Some (Has_regular { regular; impls = _ }) -> Some regular
+       | Some (Only_impl _) | None -> None)
+   | None -> None
+    : method_info option)
 
 let find_method_opt (env : t) ~(type_name : type_name)
-    ~(method_name : method_name) : method_table_entry option =
-  match H.find_opt env.by_type type_name with
-  | Some method_table -> M.find_opt method_table method_name
-  | None -> None
+    ~(method_name : method_name) =
+  (match H.find_opt env type_name with
+   | Some method_table -> M.find_opt method_table method_name
+   | None -> None
+    : method_table_entry option)
 
 let iter_methods_by_type (env : t) ~(type_name : type_name)
     (f : method_name -> method_info -> unit) =
-  match H.find_opt env.by_type type_name with
+  match H.find_opt env type_name with
   | Some method_table ->
-      M.iter2 method_table (fun method_name entry ->
-          match entry with
-          | Regular mi | Impl (mi :: []) -> f method_name mi
-          | Impl _ -> ())
+      M.iter2 method_table (fun method_name ->
+          fun entry ->
+           match entry with
+           | Has_regular { regular = mi; impls = _ } | Only_impl (mi :: []) ->
+               f method_name mi
+           | Only_impl _ -> ())
   | None -> ()
 
-let find_methods_by_name (env : t) ~method_name : (type_name * method_info) list
-    =
-  M.find_default env.by_name method_name []
-
 let add_method (env : t) ~(type_name : type_name) ~(method_name : method_name)
-    ~(method_info : method_info) : unit =
-  (match H.find_opt env.by_type type_name with
-  | Some method_table ->
-      M.replace method_table method_name (Regular method_info)
-  | None ->
-      let method_table = M.create 17 in
-      M.add method_table method_name (Regular method_info);
-      H.add env.by_type type_name method_table);
-  M.add_or_update env.by_name method_name
-    [ (type_name, method_info) ]
-    ~update:(fun methods -> (type_name, method_info) :: methods)
-  |> ignore
+    ~(method_info : method_info) =
+  (match H.find_opt env type_name with
+   | Some method_table ->
+       ignore
+         (M.add_or_update method_table method_name
+            (Has_regular { regular = method_info; impls = [] })
+            ~update:(fun
+                (Has_regular { regular = _; impls } | Only_impl impls) ->
+              Has_regular { regular = method_info; impls }))
+   | None ->
+       let method_table = M.create 17 in
+       M.add method_table method_name
+         (Has_regular { regular = method_info; impls = [] });
+       H.add env type_name method_table
+    : unit)
 
 let add_impl (env : t) ~(type_name : type_name) ~(method_name : method_name)
-    ~(method_info : method_info) : unit =
-  match H.find_opt env.by_type type_name with
-  | Some method_table ->
-      M.add_or_update method_table method_name (Impl [ method_info ])
-        ~update:(fun entry ->
-          match entry with
-          | Regular _ -> entry
-          | Impl mis -> Impl (method_info :: mis))
-      |> ignore
-  | None ->
-      let method_table = M.create 17 in
-      M.add method_table method_name (Impl [ method_info ]);
-      H.add env.by_type type_name method_table
+    ~(method_info : method_info) =
+  (match H.find_opt env type_name with
+   | Some method_table ->
+       ignore
+         (M.add_or_update method_table method_name (Only_impl [ method_info ])
+            ~update:(fun entry ->
+              match entry with
+              | Has_regular { regular; impls } ->
+                  Has_regular { regular; impls = method_info :: impls }
+              | Only_impl mis -> Only_impl (method_info :: mis)))
+   | None ->
+       let method_table = M.create 17 in
+       M.add method_table method_name (Only_impl [ method_info ]);
+       H.add env type_name method_table
+    : unit)
 
-let to_value_info (m : method_info) : Value_info.t =
-  Toplevel_value
-    {
-      id = m.id;
-      typ = m.typ;
-      pub = m.pub;
-      kind = (match m.prim with None -> Normal | Some prim -> Prim prim);
-      loc_ = m.loc;
-      doc_ = m.doc_;
-      ty_params_ = m.ty_params_;
-      arity_ = Some m.arity_;
-      param_names_ = m.param_names_;
-      direct_use_loc_ = Not_direct_use;
-    }
+let to_value_info (m : method_info) =
+  (Toplevel_value
+     {
+       id = m.id;
+       typ = m.typ;
+       pub = m.pub;
+       kind = (match m.prim with None -> Normal | Some prim -> Prim prim);
+       loc_ = m.loc;
+       doc_ = m.doc_;
+       attrs = m.attrs;
+       ty_params_ = m.ty_params_;
+       arity_ = Some m.arity_;
+       param_names_ = m.param_names_;
+       direct_use_loc_ = Not_direct_use;
+     }
+    : Value_info.t)
 
 let iter (env : t) f =
-  H.iter2 env.by_type (fun type_name tbl ->
-      M.iter2 tbl (fun method_name entry ->
-          match entry with
-          | Regular mi | Impl (mi :: []) -> f type_name method_name mi
-          | Impl _ -> ()))
-
-let iter_by_name (env : t)
-    (f : method_name * (type_name * method_info) list -> unit) =
-  M.iter env.by_name f
+  H.iter2 env (fun type_name ->
+      fun tbl ->
+       M.iter2 tbl (fun method_name ->
+           fun entry ->
+            match entry with
+            | Has_regular { regular = mi; impls = _ } | Only_impl (mi :: []) ->
+                f type_name method_name mi
+            | Only_impl _ -> ()))
 
 type method_array = (type_name * (method_name * method_table_entry) array) array
 
@@ -258,84 +311,69 @@ include struct
   let _ = fun (_ : method_array) -> ()
 
   let sexp_of_method_array =
-    (fun x__039_ ->
+    (fun x__049_ ->
        Moon_sexp_conv.sexp_of_array
-         (fun (arg0__035_, arg1__036_) ->
-           let res0__037_ = sexp_of_type_name arg0__035_
-           and res1__038_ =
+         (fun (arg0__045_, arg1__046_) ->
+           let res0__047_ = sexp_of_type_name arg0__045_
+           and res1__048_ =
              Moon_sexp_conv.sexp_of_array
-               (fun (arg0__031_, arg1__032_) ->
-                 let res0__033_ = sexp_of_method_name arg0__031_
-                 and res1__034_ = sexp_of_method_table_entry arg1__032_ in
-                 S.List [ res0__033_; res1__034_ ])
-               arg1__036_
+               (fun (arg0__041_, arg1__042_) ->
+                 let res0__043_ = sexp_of_method_name arg0__041_
+                 and res1__044_ = sexp_of_method_table_entry arg1__042_ in
+                 S.List [ res0__043_; res1__044_ ])
+               arg1__046_
            in
-           S.List [ res0__037_; res1__038_ ])
-         x__039_
+           S.List [ res0__047_; res1__048_ ])
+         x__049_
       : method_array -> S.t)
 
   let _ = sexp_of_method_array
 end
 
-let export (env : t) ~export_private : method_array =
-  let result =
-    Vec.make (H.length env.by_type)
-      ~dummy:(Type_path.Builtin.type_path_int, [||])
-  in
-  H.iter2 env.by_type (fun self_type methods ->
-      if
-        export_private
-        || (not (Type_path_util.is_foreign self_type))
-        || !Basic_config.current_package = Basic_config.builtin_package
-      then (
-        let methods_vec = Vec.make (M.length methods) ~dummy:("", Impl []) in
-        M.iter2 methods (fun method_name entry ->
-            match entry with
-            | Regular method_info ->
-                if export_private || method_info.pub then
-                  Vec.push methods_vec (method_name, entry)
-            | Impl mis -> (
-                match Lst.filter mis (fun mi -> export_private || mi.pub) with
-                | [] -> ()
-                | mis -> Vec.push methods_vec (method_name, Impl mis)));
-        if Vec.length methods_vec > 0 then
-          Vec.push result (self_type, Vec.to_array methods_vec)));
-  Vec.to_array result
+let export (env : t) ~export_private =
+  (let result =
+     Vec.make (H.length env) ~dummy:(Type_path.Builtin.type_path_int, [||])
+   in
+   H.iter2 env (fun self_type ->
+       fun methods ->
+        if
+          export_private
+          || (not (Type_path_util.is_foreign self_type))
+          || !Basic_config.current_package = Basic_config.builtin_package
+        then (
+          let methods_vec =
+            Vec.make (M.length methods) ~dummy:("", Only_impl [])
+          in
+          M.iter2 methods (fun method_name ->
+              fun entry ->
+               match entry with
+               | Has_regular { regular; impls } -> (
+                   if export_private || regular.pub then
+                     Vec.push methods_vec
+                       (method_name, Has_regular { regular; impls = [] })
+                   else
+                     match
+                       Lst.filter impls (fun mi -> export_private || mi.pub)
+                     with
+                     | [] -> ()
+                     | mis -> Vec.push methods_vec (method_name, Only_impl mis))
+               | Only_impl mis -> (
+                   match
+                     Lst.filter mis (fun mi -> export_private || mi.pub)
+                   with
+                   | [] -> ()
+                   | mis -> Vec.push methods_vec (method_name, Only_impl mis)));
+          if Vec.length methods_vec > 0 then
+            Vec.push result (self_type, Vec.to_array methods_vec)));
+   Vec.to_array result
+    : method_array)
 
-let export_regular_methods (env : t) :
-    (type_name * (method_name * method_info) array) array =
-  let result =
-    Vec.make (H.length env.by_type)
-      ~dummy:(Type_path.Builtin.type_path_int, [||])
-  in
-  H.iter2 env.by_type (fun self_type methods ->
-      if
-        (not (Type_path_util.is_foreign self_type))
-        || !Basic_config.current_package = Basic_config.builtin_package
-      then (
-        let methods_vec = Vec.empty () in
-        M.iter2 methods (fun method_name entry ->
-            match entry with
-            | Regular method_info ->
-                Vec.push methods_vec (method_name, method_info)
-            | Impl _ -> ());
-        if Vec.length methods_vec > 0 then
-          Vec.push result (self_type, Vec.to_array methods_vec)));
-  Vec.to_array result
-
-let import (methods_by_type : method_array) : t =
-  let by_name = M.create 17 in
-  let by_type = H.create (Array.length methods_by_type * 3 / 2) in
-  Arr.iter methods_by_type (fun (type_name, methods) ->
-      let tbl = M.create (Array.length methods * 3 / 2) in
-      Arr.iter methods (fun (method_name, entry) ->
-          (match entry with
-          | Regular method_info ->
-              M.add_or_update by_name method_name
-                [ (type_name, method_info) ]
-                ~update:(List.cons (type_name, method_info))
-              |> ignore
-          | Impl _ -> ());
-          M.add tbl method_name entry);
-      H.add by_type type_name tbl);
-  { by_type; by_name }
+let import (methods_by_type : method_array) =
+  (let env = H.create (Array.length methods_by_type * 3 / 2) in
+   Arr.iter methods_by_type (fun (type_name, methods) ->
+       let tbl = M.create (Array.length methods * 3 / 2) in
+       Arr.iter methods (fun (method_name, entry) ->
+           M.add tbl method_name entry);
+       H.add env type_name tbl);
+   env
+    : t)

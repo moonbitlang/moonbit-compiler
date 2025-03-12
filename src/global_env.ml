@@ -24,7 +24,7 @@ module All_types = struct
   type t = {
     toplevel : Typing_info.types;
     builtin : Typing_info.types;
-    type_alias : Typedecl_info.alias Hash_string.t;
+    type_alias : Type_alias.t Hash_string.t;
     pkgs : Pkg.pkg_tbl;
   }
 
@@ -37,7 +37,8 @@ module All_types = struct
              builtin = builtin__004_;
              type_alias = type_alias__006_;
              pkgs = pkgs__008_;
-           } ->
+           }
+       ->
          let bnds__001_ = ([] : _ Stdlib.List.t) in
          let bnds__001_ =
            let arg__009_ = Pkg.sexp_of_pkg_tbl pkgs__008_ in
@@ -45,7 +46,7 @@ module All_types = struct
          in
          let bnds__001_ =
            let arg__007_ =
-             Hash_string.sexp_of_t Typedecl_info.sexp_of_alias type_alias__006_
+             Hash_string.sexp_of_t Type_alias.sexp_of_t type_alias__006_
            in
            (S.List [ S.Atom "type_alias"; arg__007_ ] :: bnds__001_
              : _ Stdlib.List.t)
@@ -79,83 +80,65 @@ module All_types = struct
   let find_type_alias types x =
     find_type_alias_aux ~pkgs:types.pkgs ~type_alias:types.type_alias x
 
-  let find_type_aux ~pkgs ~builtin_types ~toplevel_types (x : Longident.t) ~loc
-      : Typedecl_info.t Local_diagnostics.info =
-    match x with
-    | Lident id -> (
-        match Typing_info.find_type toplevel_types id with
-        | Some td -> Ok td
-        | None -> (
-            match
-              Pkg.find_type pkgs { pkg = Basic_config.builtin_package; id } ~loc
-            with
-            | Ok td -> Ok td
-            | Error _ -> (
-                match Typing_info.find_type builtin_types id with
-                | Some td -> Ok td
-                | None -> Error (Errors.unbound_type ~name:x ~loc))))
-    | Ldot qual_name -> Pkg.find_type pkgs qual_name ~loc
-
   let find_type_by_path_aux ~pkgs ~builtin_types ~toplevel_types
-      (p : Type_path.t) : Typedecl_info.t option =
-    match p with
-    | T_unit | T_bool | T_byte | T_char | T_int | T_int64 | T_uint | T_uint64
-    | T_float | T_double | T_string | T_option | T_result | T_error_value_result
-    | T_fixedarray | T_bytes | T_ref | T_error ->
-        Typing_info.find_type builtin_types (Type_path_util.name p)
-    | Toplevel { pkg; id } ->
-        if pkg = !Basic_config.current_package then
-          Typing_info.find_type toplevel_types id
-        else Pkg.find_type_opt pkgs ~pkg id
-    | Tuple _ -> None
-    | Constr _ -> None
+      (p : Type_path.t) =
+    (match p with
+     | T_unit | T_bool | T_byte | T_int16 | T_uint16 | T_char | T_int | T_int64
+     | T_uint | T_uint64 | T_float | T_double | T_string | T_option | T_result
+     | T_error_value_result | T_fixedarray | T_bytes | T_ref | T_error ->
+         Typing_info.find_type builtin_types (Type_path_util.name p)
+     | Toplevel { pkg; id } ->
+         if pkg = !Basic_config.current_package then
+           Typing_info.find_type toplevel_types id
+         else Pkg.find_type_opt pkgs ~pkg id
+     | Tuple _ -> None
+     | Constr _ -> None
+     | T_local _ -> None
+      : Typedecl_info.t option)
 
-  let find_type_by_path (types : t) (p : Type_path.t) : Typedecl_info.t option =
-    find_type_by_path_aux ~pkgs:types.pkgs ~builtin_types:types.builtin
-      ~toplevel_types:types.toplevel p
+  let find_type_by_path (types : t) (p : Type_path.t) =
+    (find_type_by_path_aux ~pkgs:types.pkgs ~builtin_types:types.builtin
+       ~toplevel_types:types.toplevel p
+      : Typedecl_info.t option)
 
-  let find_toplevel_type_exn (env : t) (x : string) : Typedecl_info.t =
-    match Typing_info.find_type env.toplevel x with
-    | Some td -> td
-    | None -> failwith ("toplevel type not found: " ^ x)
-
-  let find_trait (env : t) (x : Longident.t) ~loc :
-      Trait_decl.t Local_diagnostics.info =
-    match x with
-    | Lident name -> (
-        match Typing_info.find_trait env.toplevel name with
-        | Some trait -> Ok trait
-        | None -> (
-            match
-              Pkg.find_trait env.pkgs
-                { pkg = Basic_config.builtin_package; id = name }
-                ~loc
-            with
-            | Ok trait -> Ok trait
-            | Error _ -> (
-                match Typing_info.find_trait env.builtin name with
-                | Some trait -> Ok trait
-                | None -> Error (Errors.unbound_trait ~name:x ~loc))))
-    | Ldot qual_name -> Pkg.find_trait env.pkgs qual_name ~loc
+  let find_trait (env : t) (x : Longident.t) ~loc =
+    (match x with
+     | Lident name -> (
+         match Typing_info.find_trait env.toplevel name with
+         | Some trait -> Ok trait
+         | None -> (
+             match
+               Pkg.find_trait env.pkgs
+                 { pkg = Basic_config.builtin_package; id = name }
+                 ~loc
+             with
+             | Ok trait -> Ok trait
+             | Error _ -> (
+                 match Typing_info.find_trait env.builtin name with
+                 | Some trait -> Ok trait
+                 | None -> Error (Errors.unbound_trait ~name:x ~loc))))
+     | Ldot qual_name -> Pkg.find_trait env.pkgs qual_name ~loc
+      : Trait_decl.t Local_diagnostics.info)
 
   let add_type_alias env name ty = Hash_string.replace env.type_alias name ty
   let add_type (t : t) = Typing_info.add_type t.toplevel
   let add_trait (t : t) = Typing_info.add_trait t.toplevel
 
   let find_trait_by_path_aux ~pkgs ~toplevel_types ~builtin_types
-      (p : Type_path.t) : Trait_decl.t option =
-    match p with
-    | T_unit | T_bool | T_byte | T_char | T_int | T_int64 | T_uint | T_uint64
-    | T_float | T_double | T_string | T_option | T_result | T_error_value_result
-    | T_fixedarray | T_bytes | T_ref | T_error ->
-        Typing_info.find_trait builtin_types (Type_path_util.name p)
-    | Toplevel { pkg; id } when pkg = !Basic_config.current_package ->
-        Typing_info.find_trait toplevel_types id
-    | Toplevel { pkg; id } -> (
-        match Pkg.find_trait pkgs { pkg; id } ~loc:Rloc.no_location with
-        | Ok trait -> Some trait
-        | Error _ -> None)
-    | Tuple _ | Constr _ -> None
+      (p : Type_path.t) =
+    (match p with
+     | T_unit | T_bool | T_byte | T_int16 | T_uint16 | T_char | T_int | T_int64
+     | T_uint | T_uint64 | T_float | T_double | T_string | T_option | T_result
+     | T_error_value_result | T_fixedarray | T_bytes | T_ref | T_error ->
+         Typing_info.find_trait builtin_types (Type_path_util.name p)
+     | Toplevel { pkg; id } when pkg = !Basic_config.current_package ->
+         Typing_info.find_trait toplevel_types id
+     | Toplevel { pkg; id } -> (
+         match Pkg.find_trait pkgs { pkg; id } ~loc:Rloc.no_location with
+         | Ok trait -> Some trait
+         | Error _ -> None)
+     | Tuple _ | Constr _ | T_local _ -> None
+      : Trait_decl.t option)
 
   let find_trait_by_path (env : t) (p : Type_path.t) =
     find_trait_by_path_aux p ~pkgs:env.pkgs ~builtin_types:env.builtin
@@ -170,32 +153,51 @@ module All_types = struct
             match Typing_info.find_trait env.toplevel id with
             | Some trait -> `Trait trait
             | None -> (
-                match
-                  Pkg.find_type_or_trait env.pkgs
-                    ~pkg:Basic_config.builtin_package id ~loc
-                with
-                | (`Type _ | `Trait _) as result -> result
-                | `Error _ -> (
+                match Pkg.find_type_or_trait_in_builtin env.pkgs id with
+                | (`Type _ | `Trait _) as x -> x
+                | `Not_found -> (
                     match Typing_info.find_type env.builtin id with
                     | Some td -> `Type td
-                    | None -> `Error (Errors.unbound_type_or_trait ~name ~loc)))
-            ))
-    | Ldot { pkg; id } -> Pkg.find_type_or_trait env.pkgs ~pkg id ~loc
+                    | None -> (
+                        match id with
+                        | "Unit" -> `Predef Stype.unit
+                        | "Bool" -> `Predef Stype.bool
+                        | "Byte" -> `Predef Stype.byte
+                        | "Int16" -> `Predef Stype.int16
+                        | "UInt16" -> `Predef Stype.uint16
+                        | "Char" -> `Predef Stype.char
+                        | "Int" -> `Predef Stype.int
+                        | "Int64" -> `Predef Stype.int64
+                        | "UInt" -> `Predef Stype.uint
+                        | "UInt64" -> `Predef Stype.uint64
+                        | "Float" -> `Predef Stype.float
+                        | "Double" -> `Predef Stype.double
+                        | "String" -> `Predef Stype.string
+                        | "Bytes" -> `Predef Stype.bytes
+                        | _ -> `Error (Errors.unbound_type_or_trait ~name ~loc))
+                    ))))
+    | Ldot { pkg; id } ->
+        (Pkg.find_type_or_trait env.pkgs ~pkg id ~loc
+          :> [ `Type of _ | `Trait of _ | `Predef of _ | `Error of _ ])
 
   let find_foreign_value (env : t) ~pkg ~name =
     Pkg.find_regular_value env.pkgs ~pkg name
 end
+
+module Qual_ident_hash = Basic_hashf.Make (Basic_qual_ident)
 
 type t = {
   builtin_types : Typing_info.types;
   builtin_values : Typing_info.values;
   toplevel_types : Typing_info.types;
   toplevel_values : Typing_info.values;
-  type_alias : Typedecl_info.alias Hash_string.t;
+  type_alias : Type_alias.t Hash_string.t;
   pkg_tbl : Pkg.pkg_tbl;
   method_env : Method_env.t;
   ext_method_env : Ext_method_env.t;
   trait_impls : Trait_impl.t;
+  mutable cur_local_type_env : Local_type.env option;
+  all_local_type_env : Local_type.env Qual_ident_hash.t;
 }
 
 include struct
@@ -212,8 +214,27 @@ include struct
            method_env = method_env__023_;
            ext_method_env = ext_method_env__025_;
            trait_impls = trait_impls__027_;
-         } ->
+           cur_local_type_env = cur_local_type_env__029_;
+           all_local_type_env = all_local_type_env__031_;
+         }
+     ->
        let bnds__010_ = ([] : _ Stdlib.List.t) in
+       let bnds__010_ =
+         let arg__032_ =
+           Qual_ident_hash.sexp_of_t Local_type.sexp_of_env
+             all_local_type_env__031_
+         in
+         (S.List [ S.Atom "all_local_type_env"; arg__032_ ] :: bnds__010_
+           : _ Stdlib.List.t)
+       in
+       let bnds__010_ =
+         let arg__030_ =
+           Moon_sexp_conv.sexp_of_option Local_type.sexp_of_env
+             cur_local_type_env__029_
+         in
+         (S.List [ S.Atom "cur_local_type_env"; arg__030_ ] :: bnds__010_
+           : _ Stdlib.List.t)
+       in
        let bnds__010_ =
          let arg__028_ = Trait_impl.sexp_of_t trait_impls__027_ in
          (S.List [ S.Atom "trait_impls"; arg__028_ ] :: bnds__010_
@@ -236,7 +257,7 @@ include struct
        in
        let bnds__010_ =
          let arg__020_ =
-           Hash_string.sexp_of_t Typedecl_info.sexp_of_alias type_alias__019_
+           Hash_string.sexp_of_t Type_alias.sexp_of_t type_alias__019_
          in
          (S.List [ S.Atom "type_alias"; arg__020_ ] :: bnds__010_
            : _ Stdlib.List.t)
@@ -268,18 +289,21 @@ include struct
 end
 
 let make ~(types : All_types.t) ~builtin ~toplevel ~method_env ~ext_method_env
-    ~trait_impls : t =
-  {
-    builtin_types = types.builtin;
-    builtin_values = builtin;
-    toplevel_types = types.toplevel;
-    toplevel_values = toplevel;
-    type_alias = types.type_alias;
-    pkg_tbl = types.pkgs;
-    method_env;
-    ext_method_env;
-    trait_impls;
-  }
+    ~trait_impls =
+  ({
+     builtin_types = types.builtin;
+     builtin_values = builtin;
+     toplevel_types = types.toplevel;
+     toplevel_values = toplevel;
+     type_alias = types.type_alias;
+     pkg_tbl = types.pkgs;
+     method_env;
+     ext_method_env;
+     trait_impls;
+     cur_local_type_env = None;
+     all_local_type_env = Qual_ident_hash.create 17;
+   }
+    : t)
 
 let get_builtin_types (env : t) = env.builtin_types
 let get_builtin_values (env : t) = env.builtin_values
@@ -291,96 +315,96 @@ let get_method_env (env : t) = env.method_env
 let get_ext_method_env (env : t) = env.ext_method_env
 let get_trait_impls (env : t) = env.trait_impls
 
-let get_all_types (env : t) : All_types.t =
-  {
-    builtin = env.builtin_types;
-    toplevel = env.toplevel_types;
-    type_alias = env.type_alias;
-    pkgs = env.pkg_tbl;
-  }
+let get_all_types (env : t) =
+  ({
+     builtin = env.builtin_types;
+     toplevel = env.toplevel_types;
+     type_alias = env.type_alias;
+     pkgs = env.pkg_tbl;
+   }
+    : All_types.t)
 
-let unknown_value id : Value_info.t =
-  Toplevel_value
-    {
-      id;
-      typ = Stype.new_type_var Tvar_error;
-      pub = false;
-      kind = Normal;
-      loc_ = Loc.no_location;
-      doc_ = Docstring.empty;
-      ty_params_ = Tvar_env.empty;
-      arity_ = None;
-      param_names_ = [];
-      direct_use_loc_ = Not_direct_use;
-    }
+let unknown_value id =
+  (Toplevel_value
+     {
+       id;
+       typ = Stype.new_type_var Tvar_error;
+       pub = false;
+       kind = Normal;
+       loc_ = Loc.no_location;
+       doc_ = Docstring.empty;
+       attrs = [];
+       ty_params_ = Tvar_env.empty;
+       arity_ = None;
+       param_names_ = [];
+       direct_use_loc_ = Not_direct_use;
+     }
+    : Value_info.t)
 
-let find_type_alias (env : t) (x : Longident.t) : Typedecl_info.alias option =
-  All_types.find_type_alias_aux ~pkgs:env.pkg_tbl ~type_alias:env.type_alias x
+let find_type_alias (env : t) (x : Longident.t) =
+  (All_types.find_type_alias_aux ~pkgs:env.pkg_tbl ~type_alias:env.type_alias x
+    : Type_alias.t option)
 
-let find_type (env : t) (x : Longident.t) ~loc :
-    Typedecl_info.t Local_diagnostics.info =
-  let fallback () =
-    All_types.find_type_aux x ~loc ~pkgs:env.pkg_tbl
-      ~builtin_types:env.builtin_types ~toplevel_types:env.toplevel_types
-      [@@local]
-  in
-  match find_type_alias env x with
-  | Some alias -> (
-      match Stype.type_repr alias.alias with
-      | T_constr { type_constructor = p; _ } -> (
-          match
-            All_types.find_type_by_path_aux ~pkgs:env.pkg_tbl
-              ~builtin_types:env.builtin_types
-              ~toplevel_types:env.toplevel_types p
-          with
-          | None -> fallback ()
-          | Some decl -> Ok decl)
-      | _ -> fallback ())
-  | None -> fallback ()
+let find_type_by_path (env : t) (p : Type_path.t) =
+  (All_types.find_type_by_path_aux p ~pkgs:env.pkg_tbl
+     ~builtin_types:env.builtin_types ~toplevel_types:env.toplevel_types
+    : Typedecl_info.t option)
 
-let find_type_by_path (env : t) (p : Type_path.t) : Typedecl_info.t option =
-  All_types.find_type_by_path_aux p ~pkgs:env.pkg_tbl
-    ~builtin_types:env.builtin_types ~toplevel_types:env.toplevel_types
+let type_not_found_error (env : t) (p : Type_path.t) ~creating_value ~loc =
+  (let pkg = Type_path.get_pkg p in
+   if
+     pkg <> !Basic_config.current_package
+     &&
+     match Pkg.find_pkg_opt (get_pkg_tbl env) ~pkg with
+     | None -> true
+     | _ -> false
+   then
+     let action = if creating_value then "create value" else "destruct value" in
+     Errors.pkg_not_imported ~name:pkg
+       ~action:(action ^ " of type " ^ Type_path_util.name p : Stdlib.String.t)
+       ~loc
+   else Errors.type_not_found ~tycon:(Type_path_util.name p) ~loc
+    : Local_diagnostics.error)
 
-let type_not_found_error (env : t) (p : Type_path.t) ~creating_value ~loc :
-    Local_diagnostics.report =
-  let pkg = Type_path.get_pkg p in
-  if
-    pkg <> !Basic_config.current_package
-    && Option.is_none (Pkg.find_pkg_opt (get_pkg_tbl env) ~pkg)
-  then
-    let action = if creating_value then "create value" else "destruct value" in
-    Errors.pkg_not_imported ~name:pkg
-      ~action:(action ^ " of type " ^ Type_path_util.name p : Stdlib.String.t)
-      ~loc
-  else Errors.type_not_found ~tycon:(Type_path_util.name p) ~loc
+let get_newtype_info (env : t) (ty : Stype.t) =
+  (let find_local_newtype_info toplevel_id name =
+     let find_in_local_env env name =
+       match Local_type.find_type env name with
+       | Some { kind = Newtype info; _ } -> Some info
+       | _ -> None
+         [@@inline]
+     in
+     match env.cur_local_type_env with
+     | Some local_type_env -> find_in_local_env local_type_env name
+     | None -> (
+         match
+           Qual_ident_hash.find_opt env.all_local_type_env
+             (Qual_ident.from_toplevel_id toplevel_id)
+         with
+         | Some local_type_env -> find_in_local_env local_type_env name
+         | _ -> None)
+       [@@inline]
+   in
+   let ty = Stype.type_repr ty in
+   match ty with
+   | T_constr { type_constructor = p; _ } -> (
+       match p with
+       | T_local { toplevel_id; name } ->
+           find_local_newtype_info toplevel_id name
+       | _ -> (
+           match find_type_by_path env p with
+           | Some { ty_desc = New_type info; _ } -> Some info
+           | _ -> None))
+   | _ -> None
+    : Typedecl_info.newtype_info option)
 
-let get_newtype_info (env : t) (ty : Stype.t) :
-    Typedecl_info.newtype_info option =
-  let ty = Stype.type_repr ty in
-  match ty with
-  | T_constr { type_constructor = p; _ } -> (
-      match find_type_by_path env p with
-      | Some { ty_desc = New_type info; _ } -> Some info
-      | _ -> None)
-  | _ -> None
+let is_newtype (env : t) (ty : Stype.t) =
+  (match get_newtype_info env ty with Some _ -> true | _ -> false : bool)
 
-let is_newtype (env : t) (ty : Stype.t) : bool =
-  Option.is_some (get_newtype_info env ty)
-
-let find_trait_by_path (env : t) (p : Type_path.t) : Trait_decl.t option =
-  All_types.find_trait_by_path_aux ~pkgs:env.pkg_tbl
-    ~toplevel_types:env.toplevel_types ~builtin_types:env.builtin_types p
-
-let find_methods_by_name (env : t) ~method_name =
-  match Method_env.find_methods_by_name env.method_env ~method_name with
-  | [] -> (
-      match
-        Pkg.find_methods_by_name env.pkg_tbl ~pkg:Basic_config.builtin_package
-          ~method_name
-      with
-      | ms -> ms)
-  | ms -> ms
+let find_trait_by_path (env : t) (p : Type_path.t) =
+  (All_types.find_trait_by_path_aux ~pkgs:env.pkg_tbl
+     ~toplevel_types:env.toplevel_types ~builtin_types:env.builtin_types p
+    : Trait_decl.t option)
 
 let find_dot_method (env : t) ~(type_name : Type_path.t) ~(method_name : string)
     =
@@ -396,21 +420,21 @@ let find_dot_method (env : t) ~(type_name : Type_path.t) ~(method_name : string)
       match
         Method_env.find_method_opt env.method_env ~type_name ~method_name
       with
-      | Some (Impl mis) -> mis
-      | None | Some (Regular _) -> []
+      | Some (Only_impl mis) -> mis
+      | None | Some (Has_regular _) -> []
     else []
       [@@local]
   in
   match find_method_in_pkg pkg with
-  | Some (Regular mi) -> [ mi ]
-  | Some (Impl mis) ->
+  | Some (Has_regular { regular; impls = _ }) -> [ regular ]
+  | Some (Only_impl mis) ->
       if
         pkg <> Basic_config.builtin_package
         && Type_path.can_be_extended_from_builtin type_name
       then
         match find_method_in_pkg Basic_config.builtin_package with
-        | Some (Regular mi) -> [ mi ]
-        | Some (Impl mis') -> mis @ mis'
+        | Some (Has_regular { regular; impls = _ }) -> [ regular ]
+        | Some (Only_impl mis') -> mis @ mis'
         | None -> mis
       else mis
   | None ->
@@ -419,8 +443,8 @@ let find_dot_method (env : t) ~(type_name : Type_path.t) ~(method_name : string)
         && Type_path.can_be_extended_from_builtin type_name
       then
         match find_method_in_pkg Basic_config.builtin_package with
-        | Some (Regular mi) -> [ mi ]
-        | Some (Impl mis) -> mis
+        | Some (Has_regular { regular; impls = _ }) -> [ regular ]
+        | Some (Only_impl mis) -> mis
         | None -> find_local_extension ()
       else find_local_extension ()
 
@@ -490,194 +514,197 @@ let find_trait_impl (env : t) ~(trait : Type_path.t) ~(type_name : Type_path.t)
         | Some _ as result -> result
         | None -> find_in_builtin ())
 
-let find_value (env : t) (x : Longident.t) ~(loc : Rloc.t) :
-    Value_info.t Local_diagnostics.partial_info =
-  match x with
-  | Lident id -> (
-      match Typing_info.find_value env.toplevel_values id with
-      | Some v -> Ok (Toplevel_value v)
-      | None -> (
-          match
-            Pkg.find_value ~allow_method:false env.pkg_tbl
-              { pkg = Basic_config.builtin_package; id }
-              ~loc
-          with
-          | Ok vd -> Ok vd
-          | Error _ -> (
-              match find_methods_by_name env ~method_name:id with
-              | (_, m) :: [] -> Ok (Method_env.to_value_info m)
-              | [] ->
-                  let id =
-                    Qual_ident.make ~pkg:!Basic_config.current_package ~name:id
-                  in
-                  Partial
-                    (unknown_value id, [ Errors.unbound_value ~name:x ~loc ])
-              | ms ->
-                  let type_locs =
-                    Lst.map ms (fun (type_name, m) -> (type_name, m.loc))
-                  in
-                  let error =
-                    Errors.ambiguous_method ~name:id ~type_locs ~loc
-                  in
-                  let id =
-                    Qual_ident.make ~pkg:!Basic_config.current_package ~name:id
-                  in
-                  Partial (unknown_value id, [ error ]))))
-  | Ldot qual_name -> (
-      match Pkg.find_value ~allow_method:true env.pkg_tbl qual_name ~loc with
-      | Ok vd -> Ok vd
-      | Error err ->
-          let id = Qual_ident.make ~pkg:qual_name.pkg ~name:qual_name.id in
-          Partial (unknown_value id, [ err ]))
+let find_value (env : t) (x : Longident.t) ~(loc : Rloc.t) ~diagnostics =
+  (match x with
+   | Lident id -> (
+       match Typing_info.find_value env.toplevel_values id with
+       | Some v -> Toplevel_value v
+       | None -> (
+           match Pkg.find_value_in_builtin_package env.pkg_tbl id with
+           | Some vd -> vd
+           | None ->
+               let id =
+                 Qual_ident.make ~pkg:!Basic_config.current_package ~name:id
+               in
+               Local_diagnostics.add_error diagnostics
+                 (Errors.unbound_value ~name:x ~loc);
+               unknown_value id))
+   | Ldot qual_name -> (
+       match Pkg.find_value env.pkg_tbl qual_name ~loc ~diagnostics with
+       | Some vd -> vd
+       | None ->
+           let id = Qual_ident.make ~pkg:qual_name.pkg ~name:qual_name.id in
+           unknown_value id)
+    : Value_info.t)
 
-let find_value_by_qual_name (env : t) (q : Qual_ident.t) : Value_info.t option =
-  match q with
-  | Qregular { pkg; name } | Qregular_implicit_pkg { pkg; name } ->
-      if pkg = !Basic_config.current_package then
-        match Typing_info.find_value env.toplevel_values name with
-        | Some v -> Some (Toplevel_value v)
-        | None -> None
-      else Pkg.find_regular_value env.pkg_tbl ~pkg name
-  | Qmethod { self_typ; name } -> (
-      let pkg = Type_path.get_pkg self_typ in
-      let result =
-        if
-          pkg = !Basic_config.current_package
-          || !Basic_config.current_package = Basic_config.builtin_package
-        then
-          match
-            Method_env.find_regular_method env.method_env ~type_name:self_typ
-              ~method_name:name
-          with
-          | Some mi -> Some (Method_env.to_value_info mi)
-          | None -> None
-        else
-          Pkg.find_regular_method env.pkg_tbl ~pkg ~type_name:self_typ
-            ~method_name:name
-          |> Option.map Method_env.to_value_info
-      in
-      match result with
-      | Some _ -> result
-      | None -> (
-          match
-            Pkg.find_regular_method env.pkg_tbl
-              ~pkg:Basic_config.builtin_package ~type_name:self_typ
-              ~method_name:name
-          with
-          | Some mi -> Some (Method_env.to_value_info mi)
-          | None -> None))
-  | Qext_method { trait; self_typ; name } -> (
-      let pkg_of_trait = Type_path.get_pkg trait in
-      let pkg_of_type = Type_path.get_pkg self_typ in
-      let find_ext_method pkg =
-        if pkg = !Basic_config.current_package then
-          Ext_method_env.find_method env.ext_method_env ~trait
-            ~self_type:self_typ ~method_name:name
-        else
-          Pkg.find_ext_method_opt env.pkg_tbl ~pkg ~trait ~self_type:self_typ
-            ~method_name:name
-          [@@inline]
-      in
-      match find_ext_method pkg_of_trait with
-      | Some mi -> Some (Method_env.to_value_info mi)
-      | None ->
-          if String.equal pkg_of_trait pkg_of_type then None
-          else
-            find_ext_method pkg_of_type |> Option.map Method_env.to_value_info)
+let find_value_by_qual_name (env : t) (q : Qual_ident.t) =
+  (match q with
+   | Qregular { pkg; name } | Qregular_implicit_pkg { pkg; name } ->
+       if pkg = !Basic_config.current_package then
+         match Typing_info.find_value env.toplevel_values name with
+         | Some v -> Some (Toplevel_value v)
+         | None -> None
+       else Pkg.find_regular_value env.pkg_tbl ~pkg name
+   | Qmethod { self_typ; name } -> (
+       let pkg = Type_path.get_pkg self_typ in
+       let result =
+         if
+           pkg = !Basic_config.current_package
+           || !Basic_config.current_package = Basic_config.builtin_package
+         then
+           match
+             Method_env.find_regular_method env.method_env ~type_name:self_typ
+               ~method_name:name
+           with
+           | Some mi -> Some (Method_env.to_value_info mi)
+           | None -> None
+         else
+           Option.map Method_env.to_value_info
+             (Pkg.find_regular_method env.pkg_tbl ~pkg ~type_name:self_typ
+                ~method_name:name)
+       in
+       match result with
+       | Some _ -> result
+       | None -> (
+           match
+             Pkg.find_regular_method env.pkg_tbl
+               ~pkg:Basic_config.builtin_package ~type_name:self_typ
+               ~method_name:name
+           with
+           | Some mi -> Some (Method_env.to_value_info mi)
+           | None -> None))
+   | Qext_method { trait; self_typ; name } -> (
+       let pkg_of_trait = Type_path.get_pkg trait in
+       let pkg_of_type = Type_path.get_pkg self_typ in
+       let find_ext_method pkg =
+         if pkg = !Basic_config.current_package then
+           Ext_method_env.find_method env.ext_method_env ~trait
+             ~self_type:self_typ ~method_name:name
+         else
+           Pkg.find_ext_method_opt env.pkg_tbl ~pkg ~trait ~self_type:self_typ
+             ~method_name:name
+           [@@inline]
+       in
+       match find_ext_method pkg_of_trait with
+       | Some mi -> Some (Method_env.to_value_info mi)
+       | None ->
+           if String.equal pkg_of_trait pkg_of_type then None
+           else
+             Option.map Method_env.to_value_info (find_ext_method pkg_of_type))
+    : Value_info.t option)
 
-let find_constructor_or_constant (env : t) (x : string) ~loc :
-    [ `Constr of Typedecl_info.constructor | `Constant of Value_info.toplevel ]
-    Local_diagnostics.info =
-  let ambiguous_error (c1 : Typedecl_info.constructor)
-      (c2 : Typedecl_info.constructor) =
-    let first_ty =
-      c1.cs_res |> Stype.extract_tpath_exn |> Type_path_util.name
-    in
-    let second_ty =
-      c2.cs_res |> Stype.extract_tpath_exn |> Type_path_util.name
-    in
-    Error (Errors.ambiguous_constructor ~name:x ~first_ty ~second_ty ~loc)
-      [@@local]
-  in
-  match Typing_info.find_constructor env.toplevel_values x with
-  | constr :: [] -> Ok (`Constr constr)
-  | c1 :: c2 :: _ -> ambiguous_error c1 c2
-  | [] -> (
-      match Typing_info.find_value env.toplevel_values x with
-      | Some c -> Ok (`Constant c)
-      | None -> (
-          match
-            Pkg.find_constructor_or_constant env.pkg_tbl
-              ~pkg:Basic_config.builtin_package x ~loc
-          with
-          | Ok _ as result -> result
-          | Error _ -> (
-              match Typing_info.find_constructor env.builtin_values x with
-              | constr :: [] -> Ok (`Constr constr)
-              | c1 :: c2 :: _ -> ambiguous_error c1 c2
-              | [] -> Error (Errors.constr_not_found ~ty:None ~constr:x ~loc))))
+let find_constructor_or_constant (env : t) (x : string) ~loc =
+  (let ambiguous_error (c1 : Typedecl_info.constructor)
+       (c2 : Typedecl_info.constructor) =
+     let first_ty = Type_path_util.name (Stype.extract_tpath_exn c1.cs_res) in
+     let second_ty = Type_path_util.name (Stype.extract_tpath_exn c2.cs_res) in
+     Error (Errors.ambiguous_constructor ~name:x ~first_ty ~second_ty ~loc)
+       [@@local]
+   in
+   let find_toplevel_constructor_or_constant () =
+     match Typing_info.find_constructor env.toplevel_values x with
+     | constr :: [] -> Ok (`Constr constr)
+     | c1 :: c2 :: _ -> ambiguous_error c1 c2
+     | [] -> (
+         match Typing_info.find_value env.toplevel_values x with
+         | Some c -> Ok (`Constant c)
+         | None -> (
+             match
+               Pkg.find_constructor_or_constant env.pkg_tbl
+                 ~pkg:Basic_config.builtin_package x ~loc
+             with
+             | Ok _ as result -> result
+             | Error _ -> (
+                 match Typing_info.find_constructor env.builtin_values x with
+                 | constr :: [] -> Ok (`Constr constr)
+                 | c1 :: c2 :: _ -> ambiguous_error c1 c2
+                 | [] -> Error (Errors.constr_not_found ~ty:None ~constr:x ~loc)
+                 )))
+       [@@local]
+   in
+   match env.cur_local_type_env with
+   | Some local_type_env -> (
+       match Local_type.find_constr local_type_env x with
+       | constr :: [] -> Ok (`Constr constr)
+       | c1 :: c2 :: _ -> ambiguous_error c1 c2
+       | [] -> find_toplevel_constructor_or_constant ())
+   | None -> find_toplevel_constructor_or_constant ()
+    : [ `Constr of Typedecl_info.constructor | `Constant of Value_info.toplevel ]
+      Local_diagnostics.info)
 
-let try_pick_field (env : t) (x : string) : Typedecl_info.field option =
-  match Typing_info.find_field env.toplevel_values x with
-  | Some _ as result -> result
-  | None -> Typing_info.find_field env.builtin_values x
+let try_pick_field (env : t) (x : string) =
+  (match Typing_info.find_field env.toplevel_values x with
+   | Some _ as result -> result
+   | None -> Typing_info.find_field env.builtin_values x
+    : Typedecl_info.field option)
 
 let labels_of_record (env : t) (ty : Stype.t) ~loc
-    ~(context : [ `Create | `Update | `Pattern ]) :
-    Typedecl_info.fields Local_diagnostics.info =
-  let ty = Stype.type_repr ty in
-  let not_a_record kind =
-    Error
-      (Errors.not_a_record ~may_be_method:None
-         ~ty:(Printer.type_to_string ty)
-         ~kind ~loc)
-  in
-  match ty with
-  | T_constr { type_constructor = Tuple _; _ } -> not_a_record "tuple"
-  | T_constr { type_constructor = p; _ } -> (
-      match find_type_by_path env p with
-      | Some type_info -> (
-          match type_info.ty_desc with
-          | Record_type { fields = fs; has_private_field_ } ->
-              if Stype.is_external ty then
-                match (type_info.ty_vis, context) with
-                | Vis_readonly, (`Create | `Update) ->
-                    let name = Type_path_util.name p in
-                    Error (Errors.readonly_type ~name ~loc)
-                | Vis_fully_pub, `Create when has_private_field_ ->
-                    let name = Type_path_util.name p in
-                    Error
-                      (Errors.cannot_create_struct_with_priv_field ~name ~loc)
-                | (Vis_fully_pub | Vis_readonly), _ -> Ok fs
-                | (Vis_default | Vis_priv), _ -> assert false
-              else Ok fs
-          | Error_type _ | ErrorEnum_type _ -> not_a_record "error type"
-          | New_type _ -> not_a_record "newtype"
-          | Variant_type _ -> not_a_record "variant"
-          | Extern_type | Abstract_type -> not_a_record "abstract")
-      | None ->
-          let creating_value =
-            match context with `Create | `Update -> true | `Pattern -> false
-          in
-          Error (type_not_found_error env p ~creating_value ~loc))
-  | Tvar { contents = Tnolink Tvar_error } | T_blackhole ->
-      Error Errors.swallow_error
-  | Tvar _ -> not_a_record "unknown"
-  | Tarrow _ -> not_a_record "function"
-  | Tparam _ -> not_a_record "type parameter"
-  | T_trait _ -> not_a_record "trait"
-  | T_builtin T_unit -> not_a_record "unit"
-  | T_builtin T_bool -> not_a_record "bool"
-  | T_builtin T_byte -> not_a_record "byte"
-  | T_builtin T_char -> not_a_record "char"
-  | T_builtin T_int -> not_a_record "int"
-  | T_builtin T_int64 -> not_a_record "int64"
-  | T_builtin T_uint -> not_a_record "uint"
-  | T_builtin T_uint64 -> not_a_record "uint64"
-  | T_builtin T_float -> not_a_record "float"
-  | T_builtin T_double -> not_a_record "double"
-  | T_builtin T_string -> not_a_record "string"
-  | T_builtin T_bytes -> not_a_record "bytes"
+    ~(context : [ `Create | `Update | `Pattern ]) =
+  (let ty = Stype.type_repr ty in
+   let not_a_record kind =
+     Error
+       (Errors.not_a_record ~may_be_method:None
+          ~ty:(Printer.type_to_string ty)
+          ~kind ~loc)
+   in
+   match ty with
+   | T_constr { type_constructor = Tuple _; _ } -> not_a_record "tuple"
+   | T_constr { type_constructor = T_local { name; _ }; _ } -> (
+       match[@warning "-fragile-match"] env.cur_local_type_env with
+       | Some local_type_env -> (
+           match Local_type.find_type local_type_env name with
+           | Some { kind = Struct fs; _ } -> Ok fs
+           | Some { kind = Enum _; _ } -> not_a_record "enum"
+           | Some { kind = Newtype _; _ } -> not_a_record "newtype"
+           | Some { kind = Placeholder; _ } | None -> assert false)
+       | _ -> assert false)
+   | T_constr { type_constructor = p; _ } -> (
+       match find_type_by_path env p with
+       | Some type_info -> (
+           match type_info.ty_desc with
+           | Record_type { fields = fs; has_private_field_ } ->
+               if Stype.is_external ty then
+                 match (type_info.ty_vis, context) with
+                 | Vis_readonly, (`Create | `Update) ->
+                     let name = Type_path_util.name p in
+                     Error (Errors.readonly_type ~name ~loc)
+                 | Vis_fully_pub, `Create when has_private_field_ ->
+                     let name = Type_path_util.name p in
+                     Error
+                       (Errors.cannot_create_struct_with_priv_field ~name ~loc)
+                 | (Vis_fully_pub | Vis_readonly), _ -> Ok fs
+                 | (Vis_default | Vis_priv), _ -> assert false
+               else Ok fs
+           | Error_type _ | ErrorEnum_type _ -> not_a_record "error type"
+           | New_type _ -> not_a_record "newtype"
+           | Variant_type _ -> not_a_record "variant"
+           | Extern_type | Abstract_type -> not_a_record "abstract")
+       | None ->
+           let creating_value =
+             match context with `Create | `Update -> true | `Pattern -> false
+           in
+           Error (type_not_found_error env p ~creating_value ~loc))
+   | Tvar { contents = Tnolink Tvar_error } | T_blackhole ->
+       Error Errors.swallow_error
+   | Tvar _ -> not_a_record "unknown"
+   | Tarrow _ -> not_a_record "function"
+   | Tparam _ -> not_a_record "type parameter"
+   | T_trait _ -> not_a_record "trait"
+   | T_builtin T_unit -> not_a_record "Unit"
+   | T_builtin T_bool -> not_a_record "Bool"
+   | T_builtin T_byte -> not_a_record "Byte"
+   | T_builtin T_int16 -> not_a_record "Int16"
+   | T_builtin T_uint16 -> not_a_record "Uint16"
+   | T_builtin T_char -> not_a_record "Char"
+   | T_builtin T_int -> not_a_record "Int"
+   | T_builtin T_int64 -> not_a_record "Int64"
+   | T_builtin T_uint -> not_a_record "Uint"
+   | T_builtin T_uint64 -> not_a_record "Uint64"
+   | T_builtin T_float -> not_a_record "Float"
+   | T_builtin T_double -> not_a_record "Double"
+   | T_builtin T_string -> not_a_record "String"
+   | T_builtin T_bytes -> not_a_record "Bytes"
+    : Typedecl_info.fields Local_diagnostics.info)
 
 let constrs_of_typedecl_info (td : Typedecl_info.t) ~loc ~error_ty =
   let not_a_variant kind =
@@ -691,137 +718,123 @@ let constrs_of_typedecl_info (td : Typedecl_info.t) ~loc ~error_ty =
   | Record_type _ -> not_a_variant "record"
   | Extern_type | Abstract_type -> not_a_variant "abstract"
 
-let constrs_of_variant (env : t) (ty : Stype.t) ~loc ~creating_value :
-    Typedecl_info.constructors Local_diagnostics.info =
-  let ty = Stype.type_repr ty in
-  let not_a_variant kind =
-    Error (Errors.not_a_variant ~ty:(Printer.type_to_string ty) ~kind ~loc)
-  in
-  match ty with
-  | T_constr { type_constructor = Tuple _; _ } -> not_a_variant "tuple"
-  | T_constr { type_constructor = p; _ } -> (
-      match find_type_by_path env p with
-      | Some type_info ->
-          constrs_of_typedecl_info type_info ~loc ~error_ty:(fun () ->
-              Printer.type_to_string ty)
-      | None -> Error (type_not_found_error env p ~creating_value ~loc))
-  | Tvar { contents = Tnolink Tvar_error } | T_blackhole ->
-      Error Errors.swallow_error
-  | Tvar _ -> not_a_variant "unknown"
-  | Tarrow _ -> not_a_variant "function"
-  | Tparam _ -> not_a_variant "type parameter"
-  | T_trait _ -> not_a_variant "trait"
-  | T_builtin T_unit -> not_a_variant "unit"
-  | T_builtin T_bool -> not_a_variant "bool"
-  | T_builtin T_byte -> not_a_variant "byte"
-  | T_builtin T_char -> not_a_variant "char"
-  | T_builtin T_int -> not_a_variant "int"
-  | T_builtin T_int64 -> not_a_variant "int64"
-  | T_builtin T_uint -> not_a_variant "uint"
-  | T_builtin T_uint64 -> not_a_variant "uint64"
-  | T_builtin T_float -> not_a_variant "float"
-  | T_builtin T_double -> not_a_variant "double"
-  | T_builtin T_string -> not_a_variant "string"
-  | T_builtin T_bytes -> not_a_variant "bytes"
+let constrs_of_variant (env : t) (ty : Stype.t) ~loc ~creating_value =
+  (let ty = Stype.type_repr ty in
+   let not_a_variant kind =
+     Error (Errors.not_a_variant ~ty:(Printer.type_to_string ty) ~kind ~loc)
+   in
+   match ty with
+   | T_constr { type_constructor = Tuple _; _ } -> not_a_variant "tuple"
+   | T_constr { type_constructor = T_local { name; toplevel_id }; _ } -> (
+       let local_type_env =
+         match env.cur_local_type_env with
+         | Some local_type_env -> local_type_env
+         | None ->
+             Qual_ident_hash.find_exn env.all_local_type_env
+               (Qual_ident.from_toplevel_id toplevel_id)
+       in
+       match Local_type.find_type local_type_env name with
+       | Some { kind = Enum cs; _ } -> Ok cs
+       | Some { kind = Struct _; _ } -> not_a_variant "struct"
+       | Some { kind = Newtype { newtype_constr; _ }; _ } ->
+           Ok [ newtype_constr ]
+       | Some { kind = Placeholder; _ } | None -> assert false)
+   | T_constr { type_constructor = p; _ } -> (
+       match find_type_by_path env p with
+       | Some type_info ->
+           constrs_of_typedecl_info type_info ~loc ~error_ty:(fun () ->
+               Printer.type_to_string ty)
+       | None -> Error (type_not_found_error env p ~creating_value ~loc))
+   | Tvar { contents = Tnolink Tvar_error } | T_blackhole ->
+       Error Errors.swallow_error
+   | Tvar _ -> not_a_variant "unknown"
+   | Tarrow _ -> not_a_variant "function"
+   | Tparam _ -> not_a_variant "type parameter"
+   | T_trait _ -> not_a_variant "trait"
+   | T_builtin T_unit -> not_a_variant "unit"
+   | T_builtin T_bool -> not_a_variant "bool"
+   | T_builtin T_byte -> not_a_variant "byte"
+   | T_builtin T_int16 -> not_a_variant "int16"
+   | T_builtin T_uint16 -> not_a_variant "uint16"
+   | T_builtin T_char -> not_a_variant "char"
+   | T_builtin T_int -> not_a_variant "int"
+   | T_builtin T_int64 -> not_a_variant "int64"
+   | T_builtin T_uint -> not_a_variant "uint"
+   | T_builtin T_uint64 -> not_a_variant "uint64"
+   | T_builtin T_float -> not_a_variant "Float"
+   | T_builtin T_double -> not_a_variant "double"
+   | T_builtin T_string -> not_a_variant "string"
+   | T_builtin T_bytes -> not_a_variant "bytes"
+    : Typedecl_info.constructors Local_diagnostics.info)
 
-let resolve_record (env : t) ~(labels : Syntax.label list) ~loc :
-    (Tvar_env.t * Stype.t * Typedecl_info.fields) Local_diagnostics.info =
-  let x = List.hd labels in
-  let all_possibles =
-    List.append
-      (Typing_info.find_all_fields env.toplevel_values x.label_name)
-      (Typing_info.find_all_fields env.builtin_values x.label_name)
-  in
-  match all_possibles with
-  | [] -> Error (Errors.unbound_field ~name:x.label_name ~loc:x.loc_)
-  | _ -> (
-      let check_field_desc (field_desc : Typedecl_info.field) =
-        let all_labels = field_desc.all_labels in
-        Lst.same_length all_labels labels
-        && Lst.for_all labels (fun label ->
-               Lst.exists all_labels (fun label' -> label' = label.label_name))
-      in
-      match Lst.filter all_possibles check_field_desc with
-      | [] ->
-          Error
-            (Errors.cannot_resolve_record
-               ~labels:(Lst.map labels (fun l -> l.label_name))
-               ~loc)
-      | field_desc :: [] -> (
-          let ty_record = field_desc.ty_record in
-          match ty_record with
-          | T_constr { type_constructor = p; _ } -> (
-              match find_type_by_path env p with
-              | Some
-                  { ty_desc = Record_type { has_private_field_ = true; _ }; _ }
-                when Type_path_util.is_foreign p ->
-                  let name = Type_path_util.name p in
-                  Error (Errors.cannot_create_struct_with_priv_field ~name ~loc)
-              | Some { ty_desc = Record_type { fields }; _ } ->
-                  Ok (field_desc.ty_params_, ty_record, fields)
-              | _ -> assert false)
-          | _ -> assert false)
-      | field_descs ->
-          let extract_name (fd : Typedecl_info.field) =
-            match fd.ty_record with
-            | T_constr { type_constructor; _ } ->
-                Type_path_util.name type_constructor
-            | _ -> assert false
-          in
-          Error
-            (Errors.ambiguous_record
-               ~names:(Lst.map field_descs extract_name)
-               ~loc))
-
-let resolve_constr_or_constant (env : t) ~(expect_ty : Stype.t option)
-    ~(constr : Syntax.constructor) ~(creating_value : bool) :
-    [ `Constr of Typedecl_info.constructor | `Constant of Value_info.toplevel ]
-    Local_diagnostics.info =
-  let ({ constr_name; extra_info; loc_ = loc } : Syntax.constructor) = constr in
-  let find_constr (fs : Typedecl_info.constructors) ty_str is_external :
-      _ Local_diagnostics.info =
-    match Lst.find_first fs (fun f -> f.constr_name = constr_name.name) with
-    | Some f ->
-        if creating_value && is_external && f.cs_vis <> Read_write then
-          Error (Errors.readonly_type ~name:f.constr_name ~loc)
-        else Ok (`Constr f)
-    | None ->
-        Error
-          (Errors.constr_not_found ~constr:constr_name.name
-             ~ty:(Some (ty_str ()))
-             ~loc)
-  in
-  match extra_info with
-  | Type_name { name } -> (
-      match find_type env name ~loc with
-      | Ok type_info -> (
-          match
-            constrs_of_typedecl_info type_info ~loc ~error_ty:(fun () ->
-                Longident.to_string name)
-          with
-          | Ok fs ->
-              find_constr fs
-                (fun () -> Longident.to_string name)
-                (Type_path_util.is_foreign type_info.ty_constr)
-          | Error _ as err -> err)
-      | Error _ as err -> err)
-  | No_extra_info -> (
-      match Option.map Stype.type_repr expect_ty with
-      | None | Some (Tvar _) ->
-          find_constructor_or_constant env constr_name.name ~loc
-      | Some ty when Type.is_super_error ty ->
-          find_constructor_or_constant env constr_name.name ~loc
-      | Some (T_builtin _) ->
-          find_constructor_or_constant env constr_name.name ~loc
-      | Some ty -> (
-          match constrs_of_variant env ty ~loc ~creating_value with
-          | Ok fs ->
-              find_constr fs
-                (fun () -> Printer.type_to_string ty)
-                (Stype.is_external ty)
-          | Error _ as err -> err))
-  | Package pkg ->
-      Pkg.find_constructor_or_constant env.pkg_tbl ~pkg constr_name.name ~loc
+let resolve_record (env : t) ~(labels : Syntax.label list) ~loc =
+  (let first_label = List.hd labels in
+   let first_label_name = first_label.label_name in
+   let all_possibles =
+     List.append
+       (Typing_info.find_all_fields env.toplevel_values first_label_name)
+       (Typing_info.find_all_fields env.builtin_values first_label_name)
+   in
+   let all_possibles =
+     match env.cur_local_type_env with
+     | Some local_type_env ->
+         List.append
+           (Local_type.find_field local_type_env first_label_name)
+           all_possibles
+     | None -> all_possibles
+   in
+   match all_possibles with
+   | [] ->
+       Error (Errors.unbound_field ~name:first_label_name ~loc:first_label.loc_)
+   | _ -> (
+       let check_field_desc (field_desc : Typedecl_info.field) =
+         let all_labels = field_desc.all_labels in
+         Lst.same_length all_labels labels
+         && Lst.for_all labels (fun label ->
+                Lst.exists all_labels (fun label' -> label' = label.label_name))
+       in
+       match Lst.filter all_possibles check_field_desc with
+       | [] ->
+           Error
+             (Errors.cannot_resolve_record
+                ~labels:(Lst.map labels (fun l -> l.label_name))
+                ~loc)
+       | field_desc :: [] -> (
+           let ty_record = field_desc.ty_record in
+           match ty_record with
+           | T_constr
+               { type_constructor = T_local { toplevel_id = _; name }; _ } -> (
+               match[@warning "-fragile-match"] env.cur_local_type_env with
+               | Some local_type_env -> (
+                   match Local_type.find_type local_type_env name with
+                   | Some { kind = Struct fields; _ } ->
+                       Ok (field_desc.ty_params_, ty_record, fields)
+                   | _ -> assert false)
+               | _ -> assert false)
+           | T_constr { type_constructor = p; _ } -> (
+               match find_type_by_path env p with
+               | Some
+                   { ty_desc = Record_type { has_private_field_ = true; _ }; _ }
+                 when Type_path_util.is_foreign p ->
+                   let name = Type_path_util.name p in
+                   Error
+                     (Errors.cannot_create_struct_with_priv_field ~name ~loc)
+               | Some { ty_desc = Record_type { fields }; _ } ->
+                   Ok (field_desc.ty_params_, ty_record, fields)
+               | _ -> assert false)
+           | _ -> assert false)
+       | field_descs ->
+           let extract_name (fd : Typedecl_info.field) =
+             match fd.ty_record with
+             | T_constr { type_constructor; _ } ->
+                 Type_path_util.name type_constructor
+             | _ -> assert false
+           in
+           Error
+             (Errors.ambiguous_record
+                ~names:(Lst.map field_descs extract_name)
+                ~loc))
+    : (Tvar_env.t * Stype.t * Typedecl_info.fields) Local_diagnostics.info)
 
 let export_mi (env : t) ~action ~pkg_name =
   Mi_format.export_mi ~action ~pkg_name ~types:env.toplevel_types
@@ -829,5 +842,97 @@ let export_mi (env : t) ~action ~pkg_name =
     ~method_env:env.method_env ~ext_method_env:env.ext_method_env
     ~trait_impls:env.trait_impls
 
-let report_unused_pkg ~diagnostics (global_env : t) : unit =
-  Pkg.report_unused ~diagnostics global_env.pkg_tbl
+let report_unused_pkg ~diagnostics (global_env : t) =
+  (Pkg.report_unused ~diagnostics global_env.pkg_tbl : unit)
+
+let add_new_local_type_env (env : t) (toplevel_id : Qual_ident.t) base =
+  let local_type_env = Local_type.empty_env base in
+  env.cur_local_type_env <- Some local_type_env;
+  Qual_ident_hash.add env.all_local_type_env toplevel_id local_type_env
+
+let get_cur_local_type_env (env : t) = env.cur_local_type_env
+let clear_cur_local_type_env (env : t) = env.cur_local_type_env <- None
+
+let add_local_type (env : t) (local_type : Local_type.t) =
+  match[@warning "-fragile-match"] env.cur_local_type_env with
+  | Some local_type_env -> Local_type.add_type local_type_env local_type
+  | _ -> assert false
+
+let find_local_type (env : t) (name : string) =
+  (match env.cur_local_type_env with
+   | None -> None
+   | Some local_type_env -> Local_type.find_type local_type_env name
+    : Local_type.t option)
+
+let update_local_type (env : t) (local_type : Local_type.t) =
+  match env.cur_local_type_env with
+  | None -> ()
+  | Some local_type_env -> Local_type.update_type local_type_env local_type
+
+let add_local_field (env : t) (field : Local_type.field) =
+  match env.cur_local_type_env with
+  | None -> ()
+  | Some local_type_env -> Local_type.add_field local_type_env field
+
+let add_local_constr (env : t) (constructor : Local_type.constructor) =
+  match env.cur_local_type_env with
+  | None -> ()
+  | Some local_type_env -> Local_type.add_constr local_type_env constructor
+
+let all_local_types (env : t) =
+  let acc = Basic_vec.empty () in
+  Qual_ident_hash.iter2 env.all_local_type_env (fun _ ->
+      fun local_type_env ->
+       let base = Local_type.get_base_loc local_type_env in
+       Local_type.iter_types local_type_env (fun name ->
+           fun t ->
+            Basic_vec.push acc
+              ( Local_type.mangle_name t.toplevel_id name,
+                Local_type.to_generic_typedecl_info base t )));
+  Basic_vec.to_array acc
+
+let find_all_type_by_path (env : t) (p : Type_path.t) =
+  (match p with
+   | T_local { toplevel_id; name } -> (
+       match
+         Qual_ident_hash.find_opt env.all_local_type_env
+           (Qual_ident.from_toplevel_id toplevel_id)
+       with
+       | None -> None
+       | Some local_type_env ->
+           Option.map
+             (Local_type.to_generic_typedecl_info
+                (Local_type.get_base_loc local_type_env))
+             (Local_type.find_type local_type_env name))
+   | _ ->
+       All_types.find_type_by_path_aux p ~pkgs:env.pkg_tbl
+         ~builtin_types:env.builtin_types ~toplevel_types:env.toplevel_types
+    : Typedecl_info.t option)
+
+let find_local_type_env (env : t) (id : Qual_ident.t) =
+  (Qual_ident_hash.find_opt env.all_local_type_env id : Local_type.env option)
+
+let find_all_local_type (env : t) (id : Qual_ident.t) (name : string) =
+  (match find_local_type_env env id with
+   | None -> None
+   | Some local_type_env -> Local_type.find_type local_type_env name
+    : Local_type.t option)
+
+let get_all_local_type (env : t) (id : Qual_ident.t) =
+  (match find_local_type_env env id with
+   | None -> []
+   | Some local_type_env ->
+       let names = Basic_vec.empty () in
+       Local_type.iter_types local_type_env (fun name ->
+           fun _ -> Basic_vec.push names name);
+       Basic_vec.to_list names
+    : string list)
+
+let add_local_type_after_typing (env : t) (local_type : Local_type.t) =
+  let id = Qual_ident.from_toplevel_id local_type.toplevel_id in
+  match Qual_ident_hash.find_opt env.all_local_type_env id with
+  | None ->
+      let local_type_env = Local_type.empty_env Loc.no_location in
+      Qual_ident_hash.add env.all_local_type_env id local_type_env;
+      Local_type.add_type local_type_env local_type
+  | Some local_type_env -> Local_type.add_type local_type_env local_type

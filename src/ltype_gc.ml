@@ -16,14 +16,38 @@
 module Ty_ident = Basic_ty_ident
 module Hashf = Basic_hashf
 
-type t =
+type int_kind =
   | I32_Int
   | I32_Char
   | I32_Bool
   | I32_Unit
   | I32_Byte
+  | I32_Int16
+  | I32_UInt16
   | I32_Tag
   | I32_Option_Char
+
+include struct
+  let _ = fun (_ : int_kind) -> ()
+
+  let sexp_of_int_kind =
+    (function
+     | I32_Int -> S.Atom "I32_Int"
+     | I32_Char -> S.Atom "I32_Char"
+     | I32_Bool -> S.Atom "I32_Bool"
+     | I32_Unit -> S.Atom "I32_Unit"
+     | I32_Byte -> S.Atom "I32_Byte"
+     | I32_Int16 -> S.Atom "I32_Int16"
+     | I32_UInt16 -> S.Atom "I32_UInt16"
+     | I32_Tag -> S.Atom "I32_Tag"
+     | I32_Option_Char -> S.Atom "I32_Option_Char"
+      : int_kind -> S.t)
+
+  let _ = sexp_of_int_kind
+end
+
+type t =
+  | I32 of { kind : int_kind [@ceh.ignore] }
   | I64
   | F32
   | F64
@@ -41,37 +65,37 @@ include struct
 
   let sexp_of_t =
     (function
-     | I32_Int -> S.Atom "I32_Int"
-     | I32_Char -> S.Atom "I32_Char"
-     | I32_Bool -> S.Atom "I32_Bool"
-     | I32_Unit -> S.Atom "I32_Unit"
-     | I32_Byte -> S.Atom "I32_Byte"
-     | I32_Tag -> S.Atom "I32_Tag"
-     | I32_Option_Char -> S.Atom "I32_Option_Char"
+     | I32 { kind = kind__002_ } ->
+         let bnds__001_ = ([] : _ Stdlib.List.t) in
+         let bnds__001_ =
+           let arg__003_ = sexp_of_int_kind kind__002_ in
+           (S.List [ S.Atom "kind"; arg__003_ ] :: bnds__001_ : _ Stdlib.List.t)
+         in
+         S.List (S.Atom "I32" :: bnds__001_)
      | I64 -> S.Atom "I64"
      | F32 -> S.Atom "F32"
      | F64 -> S.Atom "F64"
-     | Ref { tid = tid__002_ } ->
-         let bnds__001_ = ([] : _ Stdlib.List.t) in
-         let bnds__001_ =
-           let arg__003_ = Ty_ident.sexp_of_t tid__002_ in
-           (S.List [ S.Atom "tid"; arg__003_ ] :: bnds__001_ : _ Stdlib.List.t)
-         in
-         S.List (S.Atom "Ref" :: bnds__001_)
-     | Ref_lazy_init { tid = tid__005_ } ->
+     | Ref { tid = tid__005_ } ->
          let bnds__004_ = ([] : _ Stdlib.List.t) in
          let bnds__004_ =
            let arg__006_ = Ty_ident.sexp_of_t tid__005_ in
            (S.List [ S.Atom "tid"; arg__006_ ] :: bnds__004_ : _ Stdlib.List.t)
          in
-         S.List (S.Atom "Ref_lazy_init" :: bnds__004_)
-     | Ref_nullable { tid = tid__008_ } ->
+         S.List (S.Atom "Ref" :: bnds__004_)
+     | Ref_lazy_init { tid = tid__008_ } ->
          let bnds__007_ = ([] : _ Stdlib.List.t) in
          let bnds__007_ =
            let arg__009_ = Ty_ident.sexp_of_t tid__008_ in
            (S.List [ S.Atom "tid"; arg__009_ ] :: bnds__007_ : _ Stdlib.List.t)
          in
-         S.List (S.Atom "Ref_nullable" :: bnds__007_)
+         S.List (S.Atom "Ref_lazy_init" :: bnds__007_)
+     | Ref_nullable { tid = tid__011_ } ->
+         let bnds__010_ = ([] : _ Stdlib.List.t) in
+         let bnds__010_ =
+           let arg__012_ = Ty_ident.sexp_of_t tid__011_ in
+           (S.List [ S.Atom "tid"; arg__012_ ] :: bnds__010_ : _ Stdlib.List.t)
+         in
+         S.List (S.Atom "Ref_nullable" :: bnds__010_)
      | Ref_extern -> S.Atom "Ref_extern"
      | Ref_string -> S.Atom "Ref_string"
      | Ref_bytes -> S.Atom "Ref_bytes"
@@ -82,99 +106,80 @@ include struct
   let _ = sexp_of_t
 
   let equal =
-    (fun a__010_ b__011_ ->
-       if Stdlib.( == ) a__010_ b__011_ then true
-       else
-         match (a__010_, b__011_) with
-         | I32_Int, I32_Int -> true
-         | I32_Int, _ -> false
-         | _, I32_Int -> false
-         | I32_Char, I32_Char -> true
-         | I32_Char, _ -> false
-         | _, I32_Char -> false
-         | I32_Bool, I32_Bool -> true
-         | I32_Bool, _ -> false
-         | _, I32_Bool -> false
-         | I32_Unit, I32_Unit -> true
-         | I32_Unit, _ -> false
-         | _, I32_Unit -> false
-         | I32_Byte, I32_Byte -> true
-         | I32_Byte, _ -> false
-         | _, I32_Byte -> false
-         | I32_Tag, I32_Tag -> true
-         | I32_Tag, _ -> false
-         | _, I32_Tag -> false
-         | I32_Option_Char, I32_Option_Char -> true
-         | I32_Option_Char, _ -> false
-         | _, I32_Option_Char -> false
-         | I64, I64 -> true
-         | I64, _ -> false
-         | _, I64 -> false
-         | F32, F32 -> true
-         | F32, _ -> false
-         | _, F32 -> false
-         | F64, F64 -> true
-         | F64, _ -> false
-         | _, F64 -> false
-         | Ref _a__012_, Ref _b__013_ ->
-             Ty_ident.equal _a__012_.tid _b__013_.tid
-         | Ref _, _ -> false
-         | _, Ref _ -> false
-         | Ref_lazy_init _a__014_, Ref_lazy_init _b__015_ ->
-             Ty_ident.equal _a__014_.tid _b__015_.tid
-         | Ref_lazy_init _, _ -> false
-         | _, Ref_lazy_init _ -> false
-         | Ref_nullable _a__016_, Ref_nullable _b__017_ ->
-             Ty_ident.equal _a__016_.tid _b__017_.tid
-         | Ref_nullable _, _ -> false
-         | _, Ref_nullable _ -> false
-         | Ref_extern, Ref_extern -> true
-         | Ref_extern, _ -> false
-         | _, Ref_extern -> false
-         | Ref_string, Ref_string -> true
-         | Ref_string, _ -> false
-         | _, Ref_string -> false
-         | Ref_bytes, Ref_bytes -> true
-         | Ref_bytes, _ -> false
-         | _, Ref_bytes -> false
-         | Ref_func, Ref_func -> true
-         | Ref_func, _ -> false
-         | _, Ref_func -> false
-         | Ref_any, Ref_any -> true
+    (fun a__013_ ->
+       fun b__014_ ->
+        if Stdlib.( == ) a__013_ b__014_ then true
+        else
+          match (a__013_, b__014_) with
+          | I32 _a__015_, I32 _b__016_ -> true
+          | I32 _, _ -> false
+          | _, I32 _ -> false
+          | I64, I64 -> true
+          | I64, _ -> false
+          | _, I64 -> false
+          | F32, F32 -> true
+          | F32, _ -> false
+          | _, F32 -> false
+          | F64, F64 -> true
+          | F64, _ -> false
+          | _, F64 -> false
+          | Ref _a__017_, Ref _b__018_ ->
+              Ty_ident.equal _a__017_.tid _b__018_.tid
+          | Ref _, _ -> false
+          | _, Ref _ -> false
+          | Ref_lazy_init _a__019_, Ref_lazy_init _b__020_ ->
+              Ty_ident.equal _a__019_.tid _b__020_.tid
+          | Ref_lazy_init _, _ -> false
+          | _, Ref_lazy_init _ -> false
+          | Ref_nullable _a__021_, Ref_nullable _b__022_ ->
+              Ty_ident.equal _a__021_.tid _b__022_.tid
+          | Ref_nullable _, _ -> false
+          | _, Ref_nullable _ -> false
+          | Ref_extern, Ref_extern -> true
+          | Ref_extern, _ -> false
+          | _, Ref_extern -> false
+          | Ref_string, Ref_string -> true
+          | Ref_string, _ -> false
+          | _, Ref_string -> false
+          | Ref_bytes, Ref_bytes -> true
+          | Ref_bytes, _ -> false
+          | _, Ref_bytes -> false
+          | Ref_func, Ref_func -> true
+          | Ref_func, _ -> false
+          | _, Ref_func -> false
+          | Ref_any, Ref_any -> true
       : t -> t -> bool)
 
   let _ = equal
 
   let (hash_fold_t : Ppx_base.state -> t -> Ppx_base.state) =
-    (fun hsv arg ->
-       match arg with
-       | I32_Int -> Ppx_base.hash_fold_int hsv 0
-       | I32_Char -> Ppx_base.hash_fold_int hsv 1
-       | I32_Bool -> Ppx_base.hash_fold_int hsv 2
-       | I32_Unit -> Ppx_base.hash_fold_int hsv 3
-       | I32_Byte -> Ppx_base.hash_fold_int hsv 4
-       | I32_Tag -> Ppx_base.hash_fold_int hsv 5
-       | I32_Option_Char -> Ppx_base.hash_fold_int hsv 6
-       | I64 -> Ppx_base.hash_fold_int hsv 7
-       | F32 -> Ppx_base.hash_fold_int hsv 8
-       | F64 -> Ppx_base.hash_fold_int hsv 9
-       | Ref _ir ->
-           let hsv = Ppx_base.hash_fold_int hsv 10 in
-           let hsv = hsv in
-           Ty_ident.hash_fold_t hsv _ir.tid
-       | Ref_lazy_init _ir ->
-           let hsv = Ppx_base.hash_fold_int hsv 11 in
-           let hsv = hsv in
-           Ty_ident.hash_fold_t hsv _ir.tid
-       | Ref_nullable _ir ->
-           let hsv = Ppx_base.hash_fold_int hsv 12 in
-           let hsv = hsv in
-           Ty_ident.hash_fold_t hsv _ir.tid
-       | Ref_extern -> Ppx_base.hash_fold_int hsv 13
-       | Ref_string -> Ppx_base.hash_fold_int hsv 14
-       | Ref_bytes -> Ppx_base.hash_fold_int hsv 15
-       | Ref_func -> Ppx_base.hash_fold_int hsv 16
-       | Ref_any -> Ppx_base.hash_fold_int hsv 17
+    (fun hsv ->
+       fun arg ->
+        match arg with
+        | I32 _ir ->
+            let hsv = Ppx_base.hash_fold_int hsv 0 in
+            let hsv = hsv in
+            hsv
+        | I64 -> Ppx_base.hash_fold_int hsv 1
+        | F32 -> Ppx_base.hash_fold_int hsv 2
+        | F64 -> Ppx_base.hash_fold_int hsv 3
+        | Ref _ir ->
+            let hsv = Ppx_base.hash_fold_int hsv 4 in
+            let hsv = hsv in
+            Ty_ident.hash_fold_t hsv _ir.tid
+        | Ref_lazy_init _ir ->
+            let hsv = Ppx_base.hash_fold_int hsv 5 in
+            let hsv = hsv in
+            Ty_ident.hash_fold_t hsv _ir.tid
+        | Ref_nullable _ir ->
+            let hsv = Ppx_base.hash_fold_int hsv 6 in
+            let hsv = hsv in
+            Ty_ident.hash_fold_t hsv _ir.tid
+        | Ref_extern -> Ppx_base.hash_fold_int hsv 7
+        | Ref_string -> Ppx_base.hash_fold_int hsv 8
+        | Ref_bytes -> Ppx_base.hash_fold_int hsv 9
+        | Ref_func -> Ppx_base.hash_fold_int hsv 10
+        | Ref_any -> Ppx_base.hash_fold_int hsv 11
       : Ppx_base.state -> t -> Ppx_base.state)
 
   let _ = hash_fold_t
@@ -190,49 +195,54 @@ include struct
   let _ = hash
 end
 
+let sexp_of_t t =
+  match t with I32 { kind } -> sexp_of_int_kind kind | _ -> sexp_of_t t
+
 type fn_sig = { params : t list; ret : t list }
 
 include struct
   let _ = fun (_ : fn_sig) -> ()
 
   let sexp_of_fn_sig =
-    (fun { params = params__019_; ret = ret__021_ } ->
-       let bnds__018_ = ([] : _ Stdlib.List.t) in
-       let bnds__018_ =
-         let arg__022_ = Moon_sexp_conv.sexp_of_list sexp_of_t ret__021_ in
-         (S.List [ S.Atom "ret"; arg__022_ ] :: bnds__018_ : _ Stdlib.List.t)
+    (fun { params = params__024_; ret = ret__026_ } ->
+       let bnds__023_ = ([] : _ Stdlib.List.t) in
+       let bnds__023_ =
+         let arg__027_ = Moon_sexp_conv.sexp_of_list sexp_of_t ret__026_ in
+         (S.List [ S.Atom "ret"; arg__027_ ] :: bnds__023_ : _ Stdlib.List.t)
        in
-       let bnds__018_ =
-         let arg__020_ = Moon_sexp_conv.sexp_of_list sexp_of_t params__019_ in
-         (S.List [ S.Atom "params"; arg__020_ ] :: bnds__018_ : _ Stdlib.List.t)
+       let bnds__023_ =
+         let arg__025_ = Moon_sexp_conv.sexp_of_list sexp_of_t params__024_ in
+         (S.List [ S.Atom "params"; arg__025_ ] :: bnds__023_ : _ Stdlib.List.t)
        in
-       S.List bnds__018_
+       S.List bnds__023_
       : fn_sig -> S.t)
 
   let _ = sexp_of_fn_sig
 
   let equal_fn_sig =
-    (fun a__023_ b__024_ ->
-       if Stdlib.( == ) a__023_ b__024_ then true
-       else
-         Stdlib.( && )
-           (Ppx_base.equal_list
-              (fun a__025_ b__026_ -> equal a__025_ b__026_)
-              a__023_.params b__024_.params)
-           (Ppx_base.equal_list
-              (fun a__027_ b__028_ -> equal a__027_ b__028_)
-              a__023_.ret b__024_.ret)
+    (fun a__028_ ->
+       fun b__029_ ->
+        if Stdlib.( == ) a__028_ b__029_ then true
+        else
+          Stdlib.( && )
+            (Ppx_base.equal_list
+               (fun a__030_ -> fun b__031_ -> equal a__030_ b__031_)
+               a__028_.params b__029_.params)
+            (Ppx_base.equal_list
+               (fun a__032_ -> fun b__033_ -> equal a__032_ b__033_)
+               a__028_.ret b__029_.ret)
       : fn_sig -> fn_sig -> bool)
 
   let _ = equal_fn_sig
 
   let (hash_fold_fn_sig : Ppx_base.state -> fn_sig -> Ppx_base.state) =
-   fun hsv arg ->
-    let hsv =
-      let hsv = hsv in
-      Ppx_base.hash_fold_list hash_fold_t hsv arg.params
-    in
-    Ppx_base.hash_fold_list hash_fold_t hsv arg.ret
+   fun hsv ->
+    fun arg ->
+     let hsv =
+       let hsv = hsv in
+       Ppx_base.hash_fold_list hash_fold_t hsv arg.params
+     in
+     Ppx_base.hash_fold_list hash_fold_t hsv arg.ret
 
   let _ = hash_fold_fn_sig
 
@@ -271,6 +281,7 @@ type def =
   | Ref_constructor of { args : (t * bool) list [@list] }
   | Ref_closure_abstract of { fn_sig : fn_sig }
   | Ref_object of { methods : fn_sig list }
+  | Ref_concrete_object of { abstract_obj_tid : Basic_ty_ident.t; self : t }
   | Ref_closure of { fn_sig_tid : Ty_ident.t; captures : t list }
 
 include struct
@@ -278,91 +289,113 @@ include struct
 
   let sexp_of_def =
     (function
-     | Ref_array { elem = elem__030_ } ->
-         let bnds__029_ = ([] : _ Stdlib.List.t) in
-         let bnds__029_ =
-           let arg__031_ = sexp_of_t elem__030_ in
-           (S.List [ S.Atom "elem"; arg__031_ ] :: bnds__029_ : _ Stdlib.List.t)
+     | Ref_array { elem = elem__035_ } ->
+         let bnds__034_ = ([] : _ Stdlib.List.t) in
+         let bnds__034_ =
+           let arg__036_ = sexp_of_t elem__035_ in
+           (S.List [ S.Atom "elem"; arg__036_ ] :: bnds__034_ : _ Stdlib.List.t)
          in
-         S.List (S.Atom "Ref_array" :: bnds__029_)
-     | Ref_struct { fields = fields__033_ } ->
-         let bnds__032_ = ([] : _ Stdlib.List.t) in
-         let bnds__032_ =
-           let arg__034_ =
+         S.List (S.Atom "Ref_array" :: bnds__034_)
+     | Ref_struct { fields = fields__038_ } ->
+         let bnds__037_ = ([] : _ Stdlib.List.t) in
+         let bnds__037_ =
+           let arg__039_ =
              Moon_sexp_conv.sexp_of_list
-               (fun (arg0__035_, arg1__036_) ->
-                 let res0__037_ = sexp_of_t arg0__035_
-                 and res1__038_ = Moon_sexp_conv.sexp_of_bool arg1__036_ in
-                 S.List [ res0__037_; res1__038_ ])
-               fields__033_
+               (fun (arg0__040_, arg1__041_) ->
+                 let res0__042_ = sexp_of_t arg0__040_
+                 and res1__043_ = Moon_sexp_conv.sexp_of_bool arg1__041_ in
+                 S.List [ res0__042_; res1__043_ ])
+               fields__038_
            in
-           (S.List [ S.Atom "fields"; arg__034_ ] :: bnds__032_
+           (S.List [ S.Atom "fields"; arg__039_ ] :: bnds__037_
              : _ Stdlib.List.t)
          in
-         S.List (S.Atom "Ref_struct" :: bnds__032_)
-     | Ref_late_init_struct { fields = fields__040_ } ->
-         let bnds__039_ = ([] : _ Stdlib.List.t) in
-         let bnds__039_ =
-           let arg__041_ = Moon_sexp_conv.sexp_of_list sexp_of_t fields__040_ in
-           (S.List [ S.Atom "fields"; arg__041_ ] :: bnds__039_
+         S.List (S.Atom "Ref_struct" :: bnds__037_)
+     | Ref_late_init_struct { fields = fields__045_ } ->
+         let bnds__044_ = ([] : _ Stdlib.List.t) in
+         let bnds__044_ =
+           let arg__046_ = Moon_sexp_conv.sexp_of_list sexp_of_t fields__045_ in
+           (S.List [ S.Atom "fields"; arg__046_ ] :: bnds__044_
              : _ Stdlib.List.t)
          in
-         S.List (S.Atom "Ref_late_init_struct" :: bnds__039_)
-     | Ref_constructor { args = args__044_ } ->
-         let bnds__042_ = ([] : _ Stdlib.List.t) in
-         let bnds__042_ =
-           if match args__044_ with [] -> true | _ -> false then bnds__042_
+         S.List (S.Atom "Ref_late_init_struct" :: bnds__044_)
+     | Ref_constructor { args = args__049_ } ->
+         let bnds__047_ = ([] : _ Stdlib.List.t) in
+         let bnds__047_ =
+           if match args__049_ with [] -> true | _ -> false then bnds__047_
            else
-             let arg__050_ =
-               (Moon_sexp_conv.sexp_of_list (fun (arg0__045_, arg1__046_) ->
-                    let res0__047_ = sexp_of_t arg0__045_
-                    and res1__048_ = Moon_sexp_conv.sexp_of_bool arg1__046_ in
-                    S.List [ res0__047_; res1__048_ ]))
-                 args__044_
+             let arg__055_ =
+               (Moon_sexp_conv.sexp_of_list (fun (arg0__050_, arg1__051_) ->
+                    let res0__052_ = sexp_of_t arg0__050_
+                    and res1__053_ = Moon_sexp_conv.sexp_of_bool arg1__051_ in
+                    S.List [ res0__052_; res1__053_ ]))
+                 args__049_
              in
-             let bnd__049_ = S.List [ S.Atom "args"; arg__050_ ] in
-             (bnd__049_ :: bnds__042_ : _ Stdlib.List.t)
+             let bnd__054_ = S.List [ S.Atom "args"; arg__055_ ] in
+             (bnd__054_ :: bnds__047_ : _ Stdlib.List.t)
          in
-         S.List (S.Atom "Ref_constructor" :: bnds__042_)
-     | Ref_closure_abstract { fn_sig = fn_sig__052_ } ->
-         let bnds__051_ = ([] : _ Stdlib.List.t) in
-         let bnds__051_ =
-           let arg__053_ = sexp_of_fn_sig fn_sig__052_ in
-           (S.List [ S.Atom "fn_sig"; arg__053_ ] :: bnds__051_
+         S.List (S.Atom "Ref_constructor" :: bnds__047_)
+     | Ref_closure_abstract { fn_sig = fn_sig__057_ } ->
+         let bnds__056_ = ([] : _ Stdlib.List.t) in
+         let bnds__056_ =
+           let arg__058_ = sexp_of_fn_sig fn_sig__057_ in
+           (S.List [ S.Atom "fn_sig"; arg__058_ ] :: bnds__056_
              : _ Stdlib.List.t)
          in
-         S.List (S.Atom "Ref_closure_abstract" :: bnds__051_)
-     | Ref_object { methods = methods__055_ } ->
-         let bnds__054_ = ([] : _ Stdlib.List.t) in
-         let bnds__054_ =
-           let arg__056_ =
-             Moon_sexp_conv.sexp_of_list sexp_of_fn_sig methods__055_
-           in
-           (S.List [ S.Atom "methods"; arg__056_ ] :: bnds__054_
-             : _ Stdlib.List.t)
-         in
-         S.List (S.Atom "Ref_object" :: bnds__054_)
-     | Ref_closure { fn_sig_tid = fn_sig_tid__058_; captures = captures__060_ }
-       ->
-         let bnds__057_ = ([] : _ Stdlib.List.t) in
-         let bnds__057_ =
+         S.List (S.Atom "Ref_closure_abstract" :: bnds__056_)
+     | Ref_object { methods = methods__060_ } ->
+         let bnds__059_ = ([] : _ Stdlib.List.t) in
+         let bnds__059_ =
            let arg__061_ =
-             Moon_sexp_conv.sexp_of_list sexp_of_t captures__060_
+             Moon_sexp_conv.sexp_of_list sexp_of_fn_sig methods__060_
            in
-           (S.List [ S.Atom "captures"; arg__061_ ] :: bnds__057_
+           (S.List [ S.Atom "methods"; arg__061_ ] :: bnds__059_
              : _ Stdlib.List.t)
          in
-         let bnds__057_ =
-           let arg__059_ = Ty_ident.sexp_of_t fn_sig_tid__058_ in
-           (S.List [ S.Atom "fn_sig_tid"; arg__059_ ] :: bnds__057_
+         S.List (S.Atom "Ref_object" :: bnds__059_)
+     | Ref_concrete_object
+         { abstract_obj_tid = abstract_obj_tid__063_; self = self__065_ } ->
+         let bnds__062_ = ([] : _ Stdlib.List.t) in
+         let bnds__062_ =
+           let arg__066_ = sexp_of_t self__065_ in
+           (S.List [ S.Atom "self"; arg__066_ ] :: bnds__062_ : _ Stdlib.List.t)
+         in
+         let bnds__062_ =
+           let arg__064_ = Basic_ty_ident.sexp_of_t abstract_obj_tid__063_ in
+           (S.List [ S.Atom "abstract_obj_tid"; arg__064_ ] :: bnds__062_
              : _ Stdlib.List.t)
          in
-         S.List (S.Atom "Ref_closure" :: bnds__057_)
+         S.List (S.Atom "Ref_concrete_object" :: bnds__062_)
+     | Ref_closure { fn_sig_tid = fn_sig_tid__068_; captures = captures__070_ }
+       ->
+         let bnds__067_ = ([] : _ Stdlib.List.t) in
+         let bnds__067_ =
+           let arg__071_ =
+             Moon_sexp_conv.sexp_of_list sexp_of_t captures__070_
+           in
+           (S.List [ S.Atom "captures"; arg__071_ ] :: bnds__067_
+             : _ Stdlib.List.t)
+         in
+         let bnds__067_ =
+           let arg__069_ = Ty_ident.sexp_of_t fn_sig_tid__068_ in
+           (S.List [ S.Atom "fn_sig_tid"; arg__069_ ] :: bnds__067_
+             : _ Stdlib.List.t)
+         in
+         S.List (S.Atom "Ref_closure" :: bnds__067_)
       : def -> S.t)
 
   let _ = sexp_of_def
 end
 
+let i32_int = I32 { kind = I32_Int }
+let i32_char = I32 { kind = I32_Char }
+let i32_bool = I32 { kind = I32_Bool }
+let i32_unit = I32 { kind = I32_Unit }
+let i32_byte = I32 { kind = I32_Byte }
+let i32_int16 = I32 { kind = I32_Int16 }
+let i32_uint16 = I32 { kind = I32_UInt16 }
+let i32_tag = I32 { kind = I32_Tag }
+let i32_option_char = I32 { kind = I32_Option_Char }
 let tid_string = Ty_ident.of_string "moonbit.string"
 let tid_bytes = Ty_ident.of_string "moonbit.bytes"
 let tid_enum = Ty_ident.of_string "moonbit.enum"
@@ -374,7 +407,7 @@ let ref_enum = Ref { tid = tid_enum }
 let ref_array_i32 = Ref { tid = tid_array_i32 }
 let ref_array_i64 = Ref { tid = tid_array_i64 }
 let ref_array_f64 = Ref { tid = tid_array_f64 }
-let def_array_i32 = Ref_array { elem = I32_Int }
+let def_array_i32 = Ref_array { elem = I32 { kind = I32_Int } }
 let def_array_i64 = Ref_array { elem = I64 }
 let def_array_f64 = Ref_array { elem = F64 }
 
@@ -420,7 +453,7 @@ include struct
   let _ = fun (_ : type_defs) -> ()
 
   let sexp_of_type_defs =
-    (fun x__064_ -> Ty_ident.Hash.sexp_of_t sexp_of_def x__064_
+    (fun x__074_ -> Ty_ident.Hash.sexp_of_t sexp_of_def x__074_
       : type_defs -> S.t)
 
   let _ = sexp_of_type_defs
@@ -435,20 +468,20 @@ include struct
   let _ = fun (_ : type_defs_with_context) -> ()
 
   let sexp_of_type_defs_with_context =
-    (fun { defs = defs__066_; fn_sig_tbl = fn_sig_tbl__068_ } ->
-       let bnds__065_ = ([] : _ Stdlib.List.t) in
-       let bnds__065_ =
-         let arg__069_ =
-           FnSigHash.sexp_of_t Ty_ident.sexp_of_t fn_sig_tbl__068_
+    (fun { defs = defs__076_; fn_sig_tbl = fn_sig_tbl__078_ } ->
+       let bnds__075_ = ([] : _ Stdlib.List.t) in
+       let bnds__075_ =
+         let arg__079_ =
+           FnSigHash.sexp_of_t Ty_ident.sexp_of_t fn_sig_tbl__078_
          in
-         (S.List [ S.Atom "fn_sig_tbl"; arg__069_ ] :: bnds__065_
+         (S.List [ S.Atom "fn_sig_tbl"; arg__079_ ] :: bnds__075_
            : _ Stdlib.List.t)
        in
-       let bnds__065_ =
-         let arg__067_ = sexp_of_type_defs defs__066_ in
-         (S.List [ S.Atom "defs"; arg__067_ ] :: bnds__065_ : _ Stdlib.List.t)
+       let bnds__075_ =
+         let arg__077_ = sexp_of_type_defs defs__076_ in
+         (S.List [ S.Atom "defs"; arg__077_ ] :: bnds__075_ : _ Stdlib.List.t)
        in
-       S.List bnds__065_
+       S.List bnds__075_
       : type_defs_with_context -> S.t)
 
   let _ = sexp_of_type_defs_with_context

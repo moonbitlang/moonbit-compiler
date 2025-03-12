@@ -66,4 +66,5 @@ let graph e =
 
 let graph_check v =
   let v = graph v in
-  (Vec.length v, Vec.fold_left ~f:(fun acc x -> Vec_int.length x :: acc) [] v)
+  ( Vec.length v,
+    Vec.fold_left ~f:(fun acc -> fun x -> Vec_int.length x :: acc) [] v )

@@ -13,7 +13,7 @@
 *)
 
 
-module Int_util = Basic_int_util
+module Int_util = Basic_int
 open Basic_unsafe_external
 
 type 'a bucket =

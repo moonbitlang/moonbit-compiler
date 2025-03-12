@@ -30,37 +30,38 @@ let add_constraint (cenv : t) (typ : typ) (c : Tvar_env.type_constraint) =
 let iter (c : t) ~f = Alist.iter c.constraints f
 
 let rec instantiate_type_aux ~(generic : bool) (type_subst : Stype.t array)
-    (ty : typ) : Stype.t =
-  let go ty = instantiate_type_aux ~generic type_subst ty [@@inline] in
-  match Stype.type_repr ty with
-  | Tarrow { params_ty = ty1; ret_ty = ty2; err_ty = ty3; generic_ } ->
-      if generic_ then
-        let err_ty =
-          match ty3 with None -> None | Some ty3 -> Some (go ty3)
-        in
-        Tarrow
-          {
-            params_ty = Lst.map ty1 go;
-            ret_ty = go ty2;
-            err_ty;
-            generic_ = generic;
-          }
-      else ty
-  | T_constr
-      { type_constructor = c; tys; generic_; only_tag_enum_; is_suberror_ } ->
-      if generic_ then
-        T_constr
-          {
-            type_constructor = c;
-            tys = Lst.map tys go;
-            generic_ = generic;
-            only_tag_enum_;
-            is_suberror_;
-          }
-      else ty
-  | Tvar _ as ty -> ty
-  | Tparam { index } -> type_subst.!(index)
-  | (T_trait _ | T_builtin _ | T_blackhole) as ty -> ty
+    (ty : typ) =
+  (let go ty = instantiate_type_aux ~generic type_subst ty [@@inline] in
+   match Stype.type_repr ty with
+   | Tarrow { params_ty = ty1; ret_ty = ty2; err_ty = ty3; is_async; generic_ }
+     ->
+       if generic_ then
+         let err_ty =
+           match ty3 with None -> None | Some ty3 -> Some (go ty3)
+         in
+         Tarrow
+           {
+             params_ty = Lst.map ty1 go;
+             ret_ty = go ty2;
+             err_ty;
+             is_async;
+             generic_ = generic;
+           }
+       else ty
+   | T_constr { type_constructor = c; tys; generic_; is_suberror_ } ->
+       if generic_ then
+         T_constr
+           {
+             type_constructor = c;
+             tys = Lst.map tys go;
+             generic_ = generic;
+             is_suberror_;
+           }
+       else ty
+   | Tvar _ as ty -> ty
+   | Tparam { index } -> type_subst.!(index)
+   | (T_trait _ | T_builtin _ | T_blackhole) as ty -> ty
+    : Stype.t)
 
 let instantiate_type type_subst ty =
   instantiate_type_aux ~generic:false type_subst ty
@@ -71,11 +72,12 @@ let gen_instantiate_type type_subst ty =
 [@@inline]
 
 let add_constraints ~loc ~cenv (type_subst : Stype.t array) (env : Tvar_env.t) =
-  Tvar_env.iteri env (fun index tvar_info ->
-      let ty = type_subst.!(index) in
-      Lst.iter tvar_info.constraints (fun c ->
-          let c' = match loc with None -> c | Some loc_ -> { c with loc_ } in
-          add_constraint cenv ty c'))
+  Tvar_env.iteri env (fun index ->
+      fun tvar_info ->
+       let ty = type_subst.!(index) in
+       Lst.iter tvar_info.constraints ~f:(fun c ->
+           let c' = match loc with None -> c | Some loc_ -> { c with loc_ } in
+           add_constraint cenv ty c'))
 [@@inline]
 
 let instantiate_value ~(cenv : t) ?(loc : Rloc.t option)
@@ -101,30 +103,37 @@ let instantiate_impl_self_type ~(cenv : t) ~(ty_params : Tvar_env.t)
     add_constraints ~loc:None ~cenv type_subst ty_params;
     instantiate_type type_subst self_ty
 
-let instantiate_method_no_constraint (method_info : Method_env.method_info) :
-    Stype.t * Stype.t array =
-  let ty_params = method_info.ty_params_ in
-  if Tvar_env.is_empty ty_params then (method_info.typ, [||])
-  else
-    let type_subst = Tvar_env.make_type_subst ty_params in
-    let typ' = instantiate_type type_subst method_info.typ in
-    (typ', type_subst)
+let instantiate_method_no_constraint (method_info : Method_env.method_info) =
+  (let ty_params = method_info.ty_params_ in
+   if Tvar_env.is_empty ty_params then (method_info.typ, method_info.kind_, [||])
+   else
+     let type_subst = Tvar_env.make_type_subst ty_params in
+     let typ' = instantiate_type type_subst method_info.typ in
+     let kind : Method_env.method_kind =
+       match method_info.kind_ with
+       | Regular_method | Regular_method_qualified -> method_info.kind_
+       | Method_explicit_self { self_ty } ->
+           Method_explicit_self
+             { self_ty = instantiate_type type_subst self_ty }
+     in
+     (typ', kind, type_subst)
+    : Stype.t * Method_env.method_kind * Stype.t array)
 
-let instantiate_method_decl (md : Trait_decl.method_decl) ~(self : Stype.t) :
-    Stype.t =
-  let type_subst = [| self |] in
-  gen_instantiate_type type_subst md.method_typ
+let instantiate_method_decl (md : Trait_decl.method_decl) ~(self : Stype.t) =
+  (let type_subst = [| self |] in
+   gen_instantiate_type type_subst md.method_typ
+    : Stype.t)
 
 let instantiate_record
     ~(ty_record : [ `Known of Stype.t | `Generic of Tvar_env.t * Stype.t ])
     (fields : Typedecl_info.fields) =
-  let instantiate_field type_subst (field_info : Typedecl_info.field) :
-      Typedecl_info.field =
-    {
-      field_info with
-      ty_record = instantiate_type type_subst field_info.ty_record;
-      ty_field = instantiate_type type_subst field_info.ty_field;
-    }
+  let instantiate_field type_subst (field_info : Typedecl_info.field) =
+    ({
+       field_info with
+       ty_record = instantiate_type type_subst field_info.ty_record;
+       ty_field = instantiate_type type_subst field_info.ty_field;
+     }
+      : Typedecl_info.field)
   in
   match ty_record with
   | `Known ty_expect -> (
@@ -164,6 +173,11 @@ let instantiate_constr (constr : Typedecl_info.constructor) =
     in
     (ty_res, ty_args)
 
-let instantiate_alias (alias : Typedecl_info.alias) (ty_args : Stype.t list) =
-  if Tvar_env.is_empty alias.ty_params then alias.alias
-  else gen_instantiate_type (Array.of_list ty_args) alias.alias
+let instantiate_alias (alias : Type_alias.t) (ty_args : Stype.t list) =
+  let ty =
+    match alias.target with
+    | Type_alias ty -> ty
+    | Trait_alias { trait } -> T_trait trait
+  in
+  if Tvar_env.is_empty alias.ty_params then ty
+  else gen_instantiate_type (Array.of_list ty_args) ty

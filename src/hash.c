@@ -1,35 +1,48 @@
-/* The MIT License
-
-   Copyright (c) 2016--2024 Jane Street Group, LLC <opensource-contacts@janestreet.com>
-
-   Permission is hereby granted, free of charge, to any person obtaining a copy
-   of this software and associated documentation files (the "Software"), to deal
-   in the Software without restriction, including without limitation the rights
-   to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-   copies of the Software, and to permit persons to whom the Software is
-   furnished to do so, subject to the following conditions:
-
-   The above copyright notice and this permission notice shall be included in all
-   copies or substantial portions of the Software.
-
-   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-   IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-   FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-   AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-   LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-   OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-   SOFTWARE.
-*/
-
-// copied from [https://github.com/janestreet/base/blob/master/hash_types/src/internalhash_stubs.c]
+/*
+ * Copyright (C) 2024 International Digital Economy Academy.
+ * This program is licensed under the MoonBit Public Source
+ * License as published by the International Digital Economy Academy,
+ * either version 1 of the License, or (at your option) any later
+ * version. This program is distributed in the hope that it will be
+ * useful, but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the MoonBit
+ * Public Source License for more details. You should have received a
+ * copy of the MoonBit Public Source License along with this program. If
+ * not, see
+ * <https://www.moonbitlang.com/licenses/moonbit-public-source-license-v1>.
+ */
 
 #include <stdint.h>
 #include <caml/mlvalues.h>
 #include <caml/hash.h>
 
+
+/* This pretends that the state of the OCaml internal hash function, which is an
+   int32, is actually stored in an OCaml int. */
+
+CAMLprim value Ppx_fold_int32(value st, value i)
+{
+  return Val_long(caml_hash_mix_uint32(Long_val(st), Int32_val(i)));
+}
+
+CAMLprim value Ppx_fold_nativeint(value st, value i)
+{
+  return Val_long(caml_hash_mix_intnat(Long_val(st), Nativeint_val(i)));
+}
+
+CAMLprim value Ppx_fold_int64(value st, value i)
+{
+  return Val_long(caml_hash_mix_int64(Long_val(st), Int64_val(i)));
+}
+
 CAMLprim value Ppx_fold_int(value st, value i)
 {
   return Val_long(caml_hash_mix_intnat(Long_val(st), Long_val(i)));
+}
+
+CAMLprim value Ppx_fold_float(value st, value i)
+{
+  return Val_long(caml_hash_mix_double(Long_val(st), Double_val(i)));
 }
 
 /* This code mimics what hashtbl.hash does in OCaml's hash.c */
@@ -100,6 +113,8 @@ CAMLprim value Ppx_fold_string(value st, value v_str)
 
   return Val_long(h);
 }
+
+
 
 /* Final mix and return from the hash.c implementation from INRIA */
 #define FINAL_MIX_AND_RETURN(h)                                                \

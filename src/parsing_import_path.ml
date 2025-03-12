@@ -44,7 +44,8 @@ let default_abbrev s =
   | None -> s
   | Some x -> String.sub s (x + 1) (s_len - x - 1)
 
-let parse (s : string) : t =
-  match Basic_strutil.split_on_last ':' s with
-  | "", s -> { path = s; alias = None }
-  | path, alias -> { path; alias = Some alias }
+let parse (s : string) =
+  (match Basic_strutil.split_on_last ':' s with
+   | "", s -> { path = s; alias = None }
+   | path, alias -> { path; alias = Some alias }
+    : t)

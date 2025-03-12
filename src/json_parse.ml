@@ -20,61 +20,65 @@ let error loc e =
 
 let parse_json (tokens : (Json_lexer.token * Loc.t) Basic_vec.t) =
   let curr = ref 0 in
-  let next_token () : Json_lexer.token * Loc.t =
-    let t = Basic_vec.get tokens !curr in
-    incr curr;
-    t
+  let next_token () =
+    (let t = Basic_vec.get tokens !curr in
+     incr curr;
+     t
+      : Json_lexer.token * Loc.t)
   in
-  let peek_token () : Json_lexer.token * Loc.t = Basic_vec.get tokens !curr in
+  let peek_token () = (Basic_vec.get tokens !curr : Json_lexer.token * Loc.t) in
   let skip () = incr curr in
-  let rec json () : Json_types.t =
-    match next_token () with
-    | True, loc -> True loc
-    | False, loc -> False loc
-    | Null, loc -> Null loc
-    | Number s, loc -> Float { float = s; loc }
-    | String s, loc -> Str { str = s; loc }
-    | Lbracket, loc -> parse_array loc []
-    | Lbrace, loc -> parse_map loc Map_string.empty
-    | _, loc -> error loc Unexpected_token
-  and parse_array loc_start acc : Json_types.t =
-    match peek_token () with
-    | Rbracket, loc_end ->
-        skip ();
-        Arr
-          {
-            loc = Loc.merge loc_start loc_end;
-            content = Basic_arr.reverse_of_list acc;
-          }
-    | _ -> (
-        let item = json () in
-        match next_token () with
-        | Comma, _ -> parse_array loc_start (item :: acc)
-        | Rbracket, loc_end ->
-            Arr
-              {
-                content = Basic_arr.reverse_of_list (item :: acc);
-                loc = Loc.merge loc_start loc_end;
-              }
-        | _, loc -> error loc Expect_comma_or_rbracket)
-  and parse_map loc_start acc : Json_types.t =
-    match next_token () with
-    | Rbrace, loc_end -> Obj { map = acc; loc = Loc.merge loc_start loc_end }
-    | String key, _ -> (
-        match next_token () with
-        | Colon, _ -> (
-            let value = json () in
-            match next_token () with
-            | Rbrace, loc_end ->
-                Obj
-                  {
-                    map = Map_string.add acc key value;
-                    loc = Loc.merge loc_start loc_end;
-                  }
-            | Comma, _ -> parse_map loc_start (Map_string.add acc key value)
-            | _, loc -> error loc Expect_comma_or_rbrace)
-        | _, loc -> error loc Expect_colon)
-    | _, loc -> error loc Expect_string_or_rbrace
+  let rec json () =
+    (match next_token () with
+     | True, loc -> True loc
+     | False, loc -> False loc
+     | Null, loc -> Null loc
+     | Number s, loc -> Float { float = s; loc }
+     | String s, loc -> Str { str = s; loc }
+     | Lbracket, loc -> parse_array loc []
+     | Lbrace, loc -> parse_map loc Map_string.empty
+     | _, loc -> error loc Unexpected_token
+      : Json_types.t)
+  and parse_array loc_start acc =
+    (match peek_token () with
+     | Rbracket, loc_end ->
+         skip ();
+         Arr
+           {
+             loc = Loc.merge loc_start loc_end;
+             content = Basic_arr.reverse_of_list acc;
+           }
+     | _ -> (
+         let item = json () in
+         match next_token () with
+         | Comma, _ -> parse_array loc_start (item :: acc)
+         | Rbracket, loc_end ->
+             Arr
+               {
+                 content = Basic_arr.reverse_of_list (item :: acc);
+                 loc = Loc.merge loc_start loc_end;
+               }
+         | _, loc -> error loc Expect_comma_or_rbracket)
+      : Json_types.t)
+  and parse_map loc_start acc =
+    (match next_token () with
+     | Rbrace, loc_end -> Obj { map = acc; loc = Loc.merge loc_start loc_end }
+     | String key, _ -> (
+         match next_token () with
+         | Colon, _ -> (
+             let value = json () in
+             match next_token () with
+             | Rbrace, loc_end ->
+                 Obj
+                   {
+                     map = Map_string.add acc key value;
+                     loc = Loc.merge loc_start loc_end;
+                   }
+             | Comma, _ -> parse_map loc_start (Map_string.add acc key value)
+             | _, loc -> error loc Expect_comma_or_rbrace)
+         | _, loc -> error loc Expect_colon)
+     | _, loc -> error loc Expect_string_or_rbrace
+      : Json_types.t)
   in
   let v = json () in
   match peek_token () with Eof, _ -> v | _, loc -> error loc Expect_eof

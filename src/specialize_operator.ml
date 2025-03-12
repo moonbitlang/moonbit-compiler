@@ -31,7 +31,9 @@ let try_specialize_op ~(op_info : Operators.operator_info) ~(ty_lhs : Stype.t)
           ty_args_;
           arity_ = Some (Fn_arity.simple 2);
           kind;
-          ty = Builtin.type_arrow [ ty_lhs; ty_rhs ] ret_ty ~err_ty:None;
+          ty =
+            Builtin.type_arrow [ ty_lhs; ty_rhs ] ret_ty ~err_ty:None
+              ~is_async:false;
           loc_ = loc;
         }
     in
@@ -40,6 +42,11 @@ let try_specialize_op ~(op_info : Operators.operator_info) ~(ty_lhs : Stype.t)
   let return_method ~ret_ty ~self_typ ~kind =
     return ~ty_args_:[||] ~ret_ty ~kind
       (Qual_ident.meth ~self_typ ~name:op_info.method_name)
+      [@@inline]
+  in
+  let return_impl ~ret_ty ~trait ~self_typ ~kind =
+    return ~ty_args_:[||] ~ret_ty ~kind
+      (Qual_ident.ext_meth ~trait ~self_typ ~name:op_info.method_name)
       [@@inline]
   in
   match (op_info.op_name, Stype.type_repr ty_lhs) with
@@ -68,14 +75,14 @@ let try_specialize_op ~(op_info : Operators.operator_info) ~(ty_lhs : Stype.t)
       | T_double when operator <> Mod ->
           return (Prim (Parith { operator; operand_type = F64 }))
       | T_string -> return (Prim Primitive.add_string)
-      | T_byte -> return Normal
+      | T_byte | T_int16 | T_uint16 -> return Normal
       | T_unit | T_bool | T_char | T_bytes | T_float | T_double | T_int64
       | T_uint64 ->
           None)
   | "==", T_builtin b -> (
       let return kind =
-        return_method ~self_typ:(Stype.tpath_of_builtin b) ~ret_ty:Stype.bool
-          ~kind
+        return_impl ~trait:Type_path.Builtin.trait_eq
+          ~self_typ:(Stype.tpath_of_builtin b) ~ret_ty:Stype.bool ~kind
           [@@local]
       in
       match b with
@@ -88,7 +95,8 @@ let try_specialize_op ~(op_info : Operators.operator_info) ~(ty_lhs : Stype.t)
       | T_double ->
           return (Prim (Pcomparison { operator = Eq; operand_type = F64 }))
       | T_string -> return (Prim Pstringequal)
-      | T_unit | T_bytes | T_byte -> return Normal
+      | T_bytes -> return (Prim Pbytesequal)
+      | T_unit | T_byte | T_int16 | T_uint16 -> return Normal
       | T_int64 | T_uint64 -> None)
   | ("<" | ">" | "<=" | ">=" | "!="), T_builtin b -> (
       let return kind =
@@ -107,7 +115,7 @@ let try_specialize_op ~(op_info : Operators.operator_info) ~(ty_lhs : Stype.t)
         | _ -> assert false
       in
       match b with
-      | T_int | T_char | T_byte ->
+      | T_int | T_char | T_byte | T_int16 | T_uint16 ->
           return (Prim (Pcomparison { operator; operand_type = I32 }))
       | T_uint -> return (Prim (Pcomparison { operator; operand_type = U32 }))
       | T_float -> return (Prim (Pcomparison { operator; operand_type = F32 }))
@@ -130,7 +138,7 @@ let try_specialize_op ~(op_info : Operators.operator_info) ~(ty_lhs : Stype.t)
       match b with
       | T_int -> return (Prim (Pbitwise { operator; operand_type = I32 }))
       | T_uint -> return (Prim (Pbitwise { operator; operand_type = U32 }))
-      | T_byte -> return Normal
+      | T_byte | T_int16 | T_uint16 -> return Normal
       | T_float | T_double | T_unit | T_bool | T_char | T_string | T_bytes
       | T_int64 | T_uint64 ->
           None)

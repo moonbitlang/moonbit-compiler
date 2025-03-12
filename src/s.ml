@@ -23,7 +23,7 @@ let rec equal (x : t) (y : t) =
       | List ly -> ( try List.for_all2 equal ls ly with _ -> false)
       | _ -> false)
 
-let sexp_of_t (x : t) : t = x [@@dead "+sexp_of_t"]
+let sexp_of_t (x : t) = (x : t) [@@dead "+sexp_of_t"]
 
 let char_hex n =
   Char.unsafe_chr (n + if n < 10 then Char.code '0' else Char.code 'A' - 10)

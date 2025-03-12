@@ -13,7 +13,7 @@
 *)
 
 
-module Int_util = Basic_int_util
+module Int_util = Basic_int
 module Vec = Basic_vec
 open Basic_unsafe_external
 
@@ -83,8 +83,8 @@ let iter2 h f =
     do_bucket d.!(i)
   done
 
-let iter h f = iter2 h (fun k v -> f (k, v)) [@@inline]
-let to_iter h = Basic_iter.make (fun f -> iter2 h (fun k v -> f (k, v)))
+let iter h f = iter2 h (fun k -> fun v -> f (k, v)) [@@inline]
+let to_iter h = Basic_iter.make (fun f -> iter2 h (fun k -> fun v -> f (k, v)))
 
 let fold h init f =
   let rec do_bucket b accu =
@@ -99,8 +99,10 @@ let fold h init f =
   done;
   !accu
 
-let to_list_with h f = fold h [] (fun k data acc -> f k data :: acc)
-let to_list h = fold h [] (fun k data acc -> (k, data) :: acc)
+let to_list_with h f =
+  fold h [] (fun k -> fun data -> fun acc -> f k data :: acc)
+
+let to_list h = fold h [] (fun k -> fun data -> fun acc -> (k, data) :: acc)
 
 let rec small_bucket_mem (lst : _ bucket) eq key =
   match lst with
@@ -117,39 +119,41 @@ let rec small_bucket_mem (lst : _ bucket) eq key =
           | Empty -> false
           | Cons lst -> eq key lst.key || small_bucket_mem lst.next eq key))
 
-let rec small_bucket_opt eq key (lst : _ bucket) : _ option =
-  match lst with
-  | Empty -> None
-  | Cons lst -> (
-      if eq key lst.key then Some lst.data
-      else
-        match lst.next with
-        | Empty -> None
-        | Cons lst -> (
-            if eq key lst.key then Some lst.data
-            else
-              match lst.next with
-              | Empty -> None
-              | Cons lst ->
-                  if eq key lst.key then Some lst.data
-                  else small_bucket_opt eq key lst.next))
+let rec small_bucket_opt eq key (lst : _ bucket) =
+  (match lst with
+   | Empty -> None
+   | Cons lst -> (
+       if eq key lst.key then Some lst.data
+       else
+         match lst.next with
+         | Empty -> None
+         | Cons lst -> (
+             if eq key lst.key then Some lst.data
+             else
+               match lst.next with
+               | Empty -> None
+               | Cons lst ->
+                   if eq key lst.key then Some lst.data
+                   else small_bucket_opt eq key lst.next))
+    : _ option)
 
-let rec small_bucket_key_opt eq key (lst : _ bucket) : _ option =
-  match lst with
-  | Empty -> None
-  | Cons { key = k; next; _ } -> (
-      if eq key k then Some k
-      else
-        match next with
-        | Empty -> None
-        | Cons { key = k; next; _ } -> (
-            if eq key k then Some k
-            else
-              match next with
-              | Empty -> None
-              | Cons { key = k; next; _ } ->
-                  if eq key k then Some k else small_bucket_key_opt eq key next)
-      )
+let rec small_bucket_key_opt eq key (lst : _ bucket) =
+  (match lst with
+   | Empty -> None
+   | Cons { key = k; next; _ } -> (
+       if eq key k then Some k
+       else
+         match next with
+         | Empty -> None
+         | Cons { key = k; next; _ } -> (
+             if eq key k then Some k
+             else
+               match next with
+               | Empty -> None
+               | Cons { key = k; next; _ } ->
+                   if eq key k then Some k else small_bucket_key_opt eq key next
+             ))
+    : _ option)
 
 let rec small_bucket_default eq key default (lst : _ bucket) =
   match lst with
@@ -190,14 +194,23 @@ let rec replace_bucket key data (buck : _ bucket) eq_key =
         false)
       else replace_bucket key data slot.next eq_key
 
-let to_array (type key a) (x : (key, a) t) : (key * a) array =
-  let vec = Vec.empty () in
-  iter x (fun entry -> Vec.push vec entry);
-  Vec.to_array vec
+let to_array (type key) (type a) (x : (key, a) t) =
+  (let vec = Vec.empty () in
+   iter x (fun entry -> Vec.push vec entry);
+   Vec.to_array vec
+    : (key * a) array)
 
-let to_array_filter_map (type key a b) (x : (key, a) t)
-    (f : key * a -> b option) : b array =
-  let vec = Vec.empty () in
-  iter x (fun entry ->
-      match f entry with Some v -> Vec.push vec v | None -> ());
-  Vec.to_array vec
+let to_array_map (type key) (type a) (type b) (x : (key, a) t)
+    (f : key * a -> b) =
+  (let vec = Vec.empty () in
+   iter x (fun entry -> Vec.push vec (f entry));
+   Vec.to_array vec
+    : b array)
+
+let to_array_filter_map (type key) (type a) (type b) (x : (key, a) t)
+    (f : key * a -> b option) =
+  (let vec = Vec.empty () in
+   iter x (fun entry ->
+       match f entry with Some v -> Vec.push vec v | None -> ());
+   Vec.to_array vec
+    : b array)

@@ -22,10 +22,12 @@ module Pattern_id_map = Basic_mapf.Make (struct
     let _ = fun (_ : t) -> ()
 
     let compare =
-      (fun a__001_ b__002_ ->
-         Ppx_base.compare_list
-           (fun a__003_ b__004_ -> Stdlib.compare (a__003_ : int) b__004_)
-           a__001_ b__002_
+      (fun a__001_ ->
+         fun b__002_ ->
+          Ppx_base.compare_list
+            (fun a__003_ ->
+              fun b__004_ -> Stdlib.compare (a__003_ : int) b__004_)
+            a__001_ b__002_
         : t -> t -> int)
 
     let _ = compare
@@ -38,10 +40,11 @@ module Pattern_id_map = Basic_mapf.Make (struct
     let _ = sexp_of_t
 
     let equal =
-      (fun a__006_ b__007_ ->
-         Ppx_base.equal_list
-           (fun a__008_ b__009_ -> Stdlib.( = ) (a__008_ : int) b__009_)
-           a__006_ b__007_
+      (fun a__006_ ->
+         fun b__007_ ->
+          Ppx_base.equal_list
+            (fun a__008_ -> fun b__009_ -> Stdlib.( = ) (a__008_ : int) b__009_)
+            a__006_ b__007_
         : t -> t -> bool)
 
     let _ = equal
@@ -50,7 +53,7 @@ end)
 
 type t = bool Pattern_id_map.t ref
 
-let create () : t = ref Pattern_id_map.empty
+let create () = (ref Pattern_id_map.empty : t)
 
 let is_unreachable (self : t) (pat_id : key) =
   Pattern_id_map.find_default !self pat_id true

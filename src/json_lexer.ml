@@ -200,6 +200,7 @@ let __sedlex_partition_22 c =
   let open! Stdlib in
   if c <= 100 then -1 else if c <= 101 then 0 else -1
 
+module Basic_lexing = Lexing
 module Lexing = Lex_moon_rt
 module Vec = Basic_vec
 
@@ -230,7 +231,7 @@ let report_error = function
   | Unexpected_token -> sprintf "Unexpected_token"
   | Unterminated_comment -> sprintf "Unterminated_comment"
 
-exception Error of Stdlib.Lexing.position * Stdlib.Lexing.position * error
+exception Error of Basic_lexing.position * Basic_lexing.position * error
 
 type token =
   | Comma
@@ -253,13 +254,14 @@ type env = {
   mutable current_bol : int;
 }
 
-let make_pos ~(env : env) cnum : Stdlib.Lexing.position =
-  {
-    pos_fname = env.name;
-    pos_lnum = env.current_line;
-    pos_cnum = cnum;
-    pos_bol = env.current_bol;
-  }
+let make_pos ~(env : env) cnum =
+  ({
+     pos_fname = env.name;
+     pos_lnum = env.current_line;
+     pos_cnum = cnum;
+     pos_bol = env.current_bol;
+   }
+    : Basic_lexing.position)
 [@@inline]
 
 let lexeme_spos ~env lexbuf = make_pos ~env (Lexing.lexeme_start lexbuf)
@@ -303,29 +305,34 @@ let digit_value (c : int) =
   | _ -> assert false
 
 let char_for_hex_escape : int array -> int -> int -> Uchar.t =
- fun buf pos len ->
-  let end_pos = pos + len in
-  let rec aux code pos =
-    if code > 0x10ffff then raise Overflow_max_codepoint
-    else if pos = end_pos then code
-    else
-      let digit = buf.(pos) in
-      aux ((code lsl 4) + digit_value digit) (pos + 1)
-  in
-  if len = 4 then Uchar.unsafe_of_int (aux 0 pos) else Uchar.of_int (aux 0 pos)
+ fun buf ->
+  fun pos ->
+   fun len ->
+    let end_pos = pos + len in
+    let rec aux code pos =
+      if code > 0x10ffff then raise Overflow_max_codepoint
+      else if pos = end_pos then code
+      else
+        let digit = buf.(pos) in
+        aux ((code lsl 4) + digit_value digit) (pos + 1)
+    in
+    if len = 4 then Uchar.unsafe_of_int (aux 0 pos)
+    else Uchar.of_int (aux 0 pos)
 [@@inline]
 
 let char_for_oct_escape : int array -> int -> int -> Uchar.t =
- fun buf pos len ->
-  let end_pos = pos + len in
-  let rec aux code pos =
-    if code > 0x10ffff then raise Overflow_max_codepoint
-    else if pos = end_pos then code
-    else
-      let digit = buf.(pos) in
-      aux ((code lsl 3) + digit_value digit) (pos + 1)
-  in
-  Uchar.of_int (aux 0 pos)
+ fun buf ->
+  fun pos ->
+   fun len ->
+    let end_pos = pos + len in
+    let rec aux code pos =
+      if code > 0x10ffff then raise Overflow_max_codepoint
+      else if pos = end_pos then code
+      else
+        let digit = buf.(pos) in
+        aux ((code lsl 3) + digit_value digit) (pos + 1)
+    in
+    Uchar.of_int (aux 0 pos)
 [@@inline]
 
 let decode_utf16_escape ~env (lexbuf : Lexing.lexbuf) =

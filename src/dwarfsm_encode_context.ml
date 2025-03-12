@@ -43,8 +43,6 @@ type spaces = {
   tags : space;
 }
 
-type extra_info = { mutable low_pc : int; mutable high_pc : int }
-
 type context = {
   spaces : spaces;
   types : rectype Vec.t;
@@ -57,7 +55,6 @@ type context = {
   mutable start : start option;
   elems : elem Vec.t;
   datas : data Vec.t;
-  aux : extra_info;
   tags : tag Vec.t;
 }
 
@@ -88,6 +85,5 @@ let make_context () =
     start = None;
     elems = Vec.empty ();
     datas = Vec.empty ();
-    aux = { low_pc = 0; high_pc = 0 };
     tags = Vec.empty ();
   }

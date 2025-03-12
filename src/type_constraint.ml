@@ -41,6 +41,7 @@ type indirect_trait_source =
   | Poly_method of (string * Stype.t * Loc.t)
   | Impl of { type_name : Type_path.t; trait : Type_path.t; loc : Loc.t }
   | Super_trait of Type_path.t
+  | Static_assert of string
 
 type trait_resolution_error = {
   self_ty : Stype.t;
@@ -62,8 +63,10 @@ let ambiguous_method ~ty ~method_name ~src ~first ~second ~loc =
   let second = Type_path_util.name second in
   let label =
     match src with
-    | Dot_src_infix op -> ("Operator \"" ^ op.op_name ^ "\"" : Stdlib.String.t)
-    | Dot_src_direct -> ("Method " ^ method_name : Stdlib.String.t)
+    | Dot_src_infix op ->
+        ("Operator \"" ^ op.op_name ^ "\"" : Stdlib.String.t) [@merlin.hide]
+    | Dot_src_direct ->
+        ("Method " ^ method_name : Stdlib.String.t) [@merlin.hide]
   in
   Errors.ambiguous_trait_method ~label ~ty ~first ~second ~loc
 
@@ -88,6 +91,7 @@ let cannot_resolve_trait (err : trait_resolution_error) ~loc =
             (Loc.to_string loc)
       | Super_trait trait ->
           Printf.bprintf buf "required by trait %s" (Type_path_util.name trait)
+      | Static_assert msg -> Printf.bprintf buf "required by %s" msg
         [@@inline]
     in
     match List.rev reqs with
@@ -95,7 +99,7 @@ let cannot_resolve_trait (err : trait_resolution_error) ~loc =
     | first :: rest ->
         Printf.bprintf buf "\n  note: this constraint is ";
         print_requirement buf first;
-        Lst.iter rest (fun req ->
+        Lst.iter rest ~f:(fun req ->
             Printf.bprintf buf "\n  - which is ";
             print_requirement buf req)
   in
@@ -152,7 +156,7 @@ let cannot_resolve_trait (err : trait_resolution_error) ~loc =
          print_reason buf only_reason
      | _ ->
          Printf.bprintf buf ":";
-         Lst.iter reasons (fun reason ->
+         Lst.iter reasons ~f:(fun reason ->
              Printf.bprintf buf "\n  - ";
              print_reason buf reason));
      print_require_list buf required_by);
@@ -169,28 +173,33 @@ type method_info =
     }
 
 let find_method_from_constraints ~global_env
-    (cs : Tvar_env.type_constraint list) method_name :
-    (Type_path.t * Trait_decl.method_decl) list =
-  Lst.fold_right cs [] (fun { trait } acc ->
-      match Global_env.find_trait_by_path global_env trait with
-      | None -> acc
-      | Some { vis_ = Vis_default; _ } when Type_path_util.is_foreign trait ->
-          acc
-      | Some trait_decl -> (
-          match
-            Lst.find_opt trait_decl.methods (fun meth_decl ->
-                if meth_decl.method_name = method_name then
-                  Some (trait, meth_decl)
-                else None)
-          with
-          | Some x -> x :: acc
-          | None -> acc))
+    (cs : Tvar_env.type_constraint list) method_name =
+  (Lst.fold_right cs [] (fun { trait } ->
+       fun acc ->
+        match Global_env.find_trait_by_path global_env trait with
+        | None -> acc
+        | Some { vis_ = Vis_default; _ } when Type_path_util.is_foreign trait ->
+            acc
+        | Some trait_decl -> (
+            match
+              Lst.find_opt trait_decl.methods (fun meth_decl ->
+                  if meth_decl.method_name = method_name then
+                    Some (trait, meth_decl)
+                  else None)
+            with
+            | Some x -> x :: acc
+            | None -> acc))
+    : (Type_path.t * Trait_decl.method_decl) list)
 
 let resolve_method_by_type_name (type_name : Typedtree.type_name)
-    (method_name : string) ~is_trait ~loc ~tvar_env ~global_env =
+    (method_name : string) ~loc ~tvar_env ~global_env =
   let type_name_to_string type_name =
     match (type_name : Typedtree.type_name) with
     | Tname_tvar { index = _; name_ } -> name_
+    | Tname_path { name = p; kind = Trait } ->
+        "&"
+        ^ Type_path.short_name
+            ~cur_pkg_name:(Some !Basic_config.current_package) p
     | Tname_path { name = p; kind = _ } | Tname_alias { name = p; kind = _ } ->
         Type_path.short_name ~cur_pkg_name:(Some !Basic_config.current_package)
           p
@@ -199,9 +208,7 @@ let resolve_method_by_type_name (type_name : Typedtree.type_name)
     Error
       (cannot_resolve_method
          ~ty:(type_name_to_string type_name)
-         ~name:method_name ~src:Dot_src_direct
-         ~hint:(if is_trait then `Trait else `No_hint)
-         ~loc)
+         ~name:method_name ~src:Dot_src_direct ~hint:`No_hint ~loc)
   in
   match type_name with
   | Tname_tvar { index; name_ } -> (
@@ -271,26 +278,35 @@ let resolve_method_by_type (ty : Stype.t) (method_name : string) ~loc ~src
         let pkg = Type_path.get_pkg p in
         if
           pkg = !Basic_config.current_package
-          || Option.is_some
-               (Pkg.find_pkg_opt (Global_env.get_pkg_tbl global_env) ~pkg)
+          ||
+          match Pkg.find_pkg_opt (Global_env.get_pkg_tbl global_env) ~pkg with
+          | Some _ -> true
+          | _ -> false
         then
-          let hint =
-            if is_trait then `Trait
-            else
-              match Global_env.find_type_by_path global_env p with
-              | Some { ty_desc = Record_type { fields }; _ }
-                when Lst.exists fields (fun { field_name; _ } ->
-                         field_name = method_name) ->
-                  `Record
-              | _ -> `No_hint
-          in
-          error ~hint
+          if is_trait then
+            match Global_env.find_trait_by_path global_env p with
+            | Some { vis_ = Vis_default; _ } when Type_path_util.is_foreign p ->
+                Error
+                  (Errors.cannot_use_method_of_abstract_trait ~trait:p
+                     ~method_name ~loc)
+            | _ -> error ~hint:`Trait
+          else
+            match Global_env.find_type_by_path global_env p with
+            | Some { ty_desc = Record_type { fields }; _ }
+              when Lst.exists fields (fun { field_name; _ } ->
+                       field_name = method_name) ->
+                error ~hint:`Record
+            | _ -> error ~hint:`No_hint
         else
+          let type_name =
+            (if is_trait then "&" else "") ^ Type_path_util.name p
+          in
           Error
             (Errors.pkg_not_imported ~name:pkg
                ~action:
-                 ("call method of type " ^ Type_path_util.name p
+                 (("call method of type " ^ type_name
                    : Stdlib.String.t)
+                   [@merlin.hide])
                ~loc)
   in
   let ty = Stype.type_repr ty in
@@ -319,47 +335,7 @@ let resolve_method_by_type (ty : Stype.t) (method_name : string) ~loc ~src
             (ambiguous_method ~ty:ty_name ~method_name ~src:Dot_src_direct
                ~first:trait1 ~second:trait2 ~loc)
       | _ -> error ~hint:`No_hint)
-  | T_trait trait -> (
-      match[@warning "-fragile-match"]
-        Global_env.find_trait_by_path global_env trait
-      with
-      | Some trait_decl -> (
-          match trait_decl.vis_ with
-          | Vis_default when Type_path_util.is_foreign trait ->
-              Error
-                (Errors.cannot_use_method_of_abstract_trait ~trait ~method_name
-                   ~loc)
-          | _ -> (
-              let candidates = ref [] in
-              trait_decl.closure_methods
-              |> List.iteri
-                   (fun
-                     index (trait', (method_decl : Trait_decl.method_decl)) ->
-                     if method_decl.method_name = method_name then
-                       candidates := (index, trait', method_decl) :: !candidates);
-              match !candidates with
-              | [] -> resolve_by_type_path ~is_trait:true trait
-              | (method_index, _, meth_decl) :: [] ->
-                  Ok
-                    (Promised_method
-                       {
-                         method_id =
-                           Ident.of_object_method ~trait ~method_name
-                             ~method_index;
-                         method_ty =
-                           Poly_type.instantiate_method_decl meth_decl ~self:ty;
-                         method_arity = meth_decl.method_arity;
-                         prim =
-                           Some
-                             (Pcall_object_method { method_index; method_name });
-                       })
-              | (_, trait2, _) :: (_, trait1, _) :: _ ->
-                  Error
-                    (ambiguous_method
-                       ~ty:(Type_path_util.name trait)
-                       ~method_name ~src:Dot_src_direct ~first:trait1
-                       ~second:trait2 ~loc)))
-      | _ -> assert false)
+  | T_trait trait -> resolve_by_type_path ~is_trait:true trait
   | T_constr { type_constructor = p; _ } ->
       resolve_by_type_path ~is_trait:false p
   | Tvar { contents = Tnolink Tvar_error } | T_blackhole ->
@@ -372,7 +348,7 @@ let solve_constraints (cenv : Poly_type.t) ~tvar_env ~global_env ~diagnostics =
   let hty_cache = Hashed_type.make_cache () in
   let cache : trait_resolution_error Cache.t = Cache.create 17 in
   let exception Resolve_failure of trait_resolution_error in
-  let solve_with_regular_methods ~self_ty ~type_name ~trait ~is_trait_object =
+  let solve_with_regular_methods ~self_ty ~type_name ~trait ~root_loc =
     match Global_env.find_trait_by_path global_env trait with
     | None -> ([ Trait_not_imported ], [])
     | Some { vis_ = (Vis_default | Vis_readonly) as trait_vis; _ }
@@ -381,8 +357,9 @@ let solve_constraints (cenv : Poly_type.t) ~tvar_env ~global_env ~diagnostics =
     | Some trait_decl -> (
         let new_constraints = ref [] in
         let failures = Vec.empty () in
+        let regular_impls = Vec.empty () in
         let () =
-          Lst.iter trait_decl.methods (fun method_decl ->
+          Lst.iter trait_decl.methods ~f:(fun method_decl ->
               let method_name = method_decl.method_name in
               let check_method_type actual_arity actual =
                 let exception Arity_mismatch in
@@ -423,47 +400,51 @@ let solve_constraints (cenv : Poly_type.t) ~tvar_env ~global_env ~diagnostics =
                   match err_opt with
                   | Some err -> Vec.push failures err
                   | None ->
-                      Poly_type.iter aux_cenv ~f:(fun a b ->
-                          let new_constraint_source =
-                            Poly_method (method_name, self_ty, method_info.loc)
-                          in
-                          new_constraints :=
-                            (new_constraint_source, a, b) :: !new_constraints))
-              | None when is_trait_object -> (
-                  match[@warning "-fragile-match"]
-                    Global_env.find_trait_by_path global_env type_name
-                  with
-                  | Some obj_trait_def -> (
-                      match
-                        Lst.find_first obj_trait_def.methods (fun meth_decl ->
-                            meth_decl.method_name = method_name)
-                      with
-                      | None -> Vec.push failures (Method_missing method_name)
-                      | Some meth_decl ->
-                          check_method_type meth_decl.method_arity
-                            (Poly_type.instantiate_method_decl meth_decl
-                               ~self:self_ty)
-                          |> Option.iter (Vec.push failures))
-                  | _ -> assert false)
+                      (match method_info.id with
+                      | Qmethod _ -> Vec.push regular_impls method_name
+                      | Qregular _ | Qregular_implicit_pkg _ | Qext_method _ ->
+                          ());
+                      Poly_type.iter aux_cenv ~f:(fun a ->
+                          fun b ->
+                           let new_constraint_source =
+                             Poly_method (method_name, self_ty, method_info.loc)
+                           in
+                           new_constraints :=
+                             (new_constraint_source, a, b) :: !new_constraints))
               | None -> Vec.push failures (Method_missing method_name))
         in
+        if not (Vec.is_empty regular_impls) then
+          Local_diagnostics.add_warning diagnostics
+            {
+              kind =
+                Implement_trait_with_method
+                  {
+                    trait = Type_path_util.name trait;
+                    typ = Printer.type_to_string self_ty;
+                    methods = Vec.to_list regular_impls;
+                  };
+              loc = root_loc;
+            };
         let failures = Vec.to_list failures in
         let pkg = Type_path.get_pkg type_name in
         match failures with
         | _ :: _
           when pkg <> !Basic_config.current_package
-               && Option.is_none
-                    (Pkg.find_pkg_opt (Global_env.get_pkg_tbl global_env) ~pkg)
-          ->
+               &&
+               match
+                 Pkg.find_pkg_opt (Global_env.get_pkg_tbl global_env) ~pkg
+               with
+               | None -> true
+               | _ -> false ->
             ([ Pkg_not_imported { pkg } ], !new_constraints)
         | _ -> (failures, !new_constraints))
   in
-  let do_solve (self_ty : Stype.t) ({ trait } : Tvar_env.type_constraint) =
+  let do_solve (self_ty : Stype.t) ({ trait } : Tvar_env.type_constraint)
+      ~root_loc =
     let self_ty = Stype.type_repr self_ty in
-    let solve_type_path type_name ~is_trait_object =
+    let solve_type_path type_name =
       match Global_env.find_trait_impl global_env ~trait ~type_name with
-      | None ->
-          solve_with_regular_methods ~self_ty ~type_name ~trait ~is_trait_object
+      | None -> solve_with_regular_methods ~self_ty ~type_name ~trait ~root_loc
       | Some impl ->
           let aux_cenv = Poly_type.make () in
           let actual_self_ty =
@@ -472,12 +453,13 @@ let solve_constraints (cenv : Poly_type.t) ~tvar_env ~global_env ~diagnostics =
           in
           if Ctype.try_unify self_ty actual_self_ty then (
             let new_constraints = ref [] in
-            Poly_type.iter aux_cenv ~f:(fun a b ->
-                let new_constraint_source =
-                  Impl { trait; type_name; loc = impl.loc_ }
-                in
-                new_constraints :=
-                  (new_constraint_source, a, b) :: !new_constraints);
+            Poly_type.iter aux_cenv ~f:(fun a ->
+                fun b ->
+                 let new_constraint_source =
+                   Impl { trait; type_name; loc = impl.loc_ }
+                 in
+                 new_constraints :=
+                   (new_constraint_source, a, b) :: !new_constraints);
             ([], !new_constraints))
           else
             let err =
@@ -506,16 +488,9 @@ let solve_constraints (cenv : Poly_type.t) ~tvar_env ~global_env ~diagnostics =
           | None | Some { methods = []; _ } -> ([], [])
           | Some _ -> ([ No_trait_bound ], []))
     | T_trait obj_trait when Type_path.equal obj_trait trait -> ([], [])
-    | T_trait obj_trait ->
-        let obj_trait_def =
-          Global_env.find_trait_by_path global_env obj_trait |> Option.get
-        in
-        if Lst.exists obj_trait_def.closure (Type_path.equal trait) then ([], [])
-        else solve_type_path obj_trait ~is_trait_object:true
-    | T_constr { type_constructor = p; tys = _ } ->
-        solve_type_path p ~is_trait_object:false
-    | T_builtin b ->
-        solve_type_path (Stype.tpath_of_builtin b) ~is_trait_object:false
+    | T_trait obj_trait -> solve_type_path obj_trait
+    | T_constr { type_constructor = p; tys = _ } -> solve_type_path p
+    | T_builtin b -> solve_type_path (Stype.tpath_of_builtin b)
     | _ -> (
         match Global_env.find_trait_by_path global_env trait with
         | None -> ([], [])
@@ -524,22 +499,27 @@ let solve_constraints (cenv : Poly_type.t) ~tvar_env ~global_env ~diagnostics =
                   Method_missing method_name),
               [] ))
   in
-  let rec solve self_ty
-      ({ trait; required_by_ = supers } as c : Tvar_env.type_constraint) =
+  let rec solve self_ty ({ trait; src_ } as c : Tvar_env.type_constraint)
+      ~root_loc =
     let hty = Hashed_type.of_stype hty_cache self_ty in
     match Cache.find_opt cache (hty, trait) with
     | Some Success -> ()
     | Some (Failure err) -> raise_notrace (Resolve_failure err)
     | None -> (
         Cache.add cache (hty, trait) Success;
-        match do_solve self_ty c with
+        match do_solve self_ty c ~root_loc with
         | (_ :: _ as reasons), _ ->
             let err =
               {
                 self_ty;
                 trait;
                 reasons;
-                required_by = List.rev_map (fun t -> Super_trait t) supers;
+                required_by =
+                  (match src_ with
+                  | Super_traits supers ->
+                      List.rev_map (fun t -> Super_trait t) supers
+                  | Static_assert msg -> [ Static_assert msg ]
+                  | Direct -> []);
               }
             in
             Cache.add cache (hty, trait) (Failure err);
@@ -547,10 +527,10 @@ let solve_constraints (cenv : Poly_type.t) ~tvar_env ~global_env ~diagnostics =
         | [], new_constraints ->
             let parent_self_ty = self_ty in
             let parent_trait = trait in
-            Lst.iter new_constraints (fun (src, self_ty, c) ->
-                try solve self_ty c with
+            Lst.iter new_constraints ~f:(fun (new_src, self_ty, c) ->
+                try solve self_ty c ~root_loc with
                 | Hashed_type.Unresolved_type_variable -> (
-                    match[@warning "-fragile-match"] src with
+                    match[@warning "-fragile-match"] new_src with
                     | Poly_method (_, _, loc) | Impl { loc; _ } ->
                         raise_notrace
                           (Resolve_failure
@@ -564,11 +544,13 @@ let solve_constraints (cenv : Poly_type.t) ~tvar_env ~global_env ~diagnostics =
                 | Resolve_failure err ->
                     let err =
                       let required_by =
-                        match supers with
-                        | [] -> src :: err.required_by
-                        | supers ->
+                        match src_ with
+                        | Direct -> new_src :: err.required_by
+                        | Static_assert msg ->
+                            Static_assert msg :: new_src :: err.required_by
+                        | Super_traits supers ->
                             Lst.rev_map_append supers
-                              (Super_trait trait :: src :: err.required_by)
+                              (Super_trait trait :: new_src :: err.required_by)
                               (fun t -> Super_trait t)
                       in
                       { err with required_by }
@@ -577,8 +559,9 @@ let solve_constraints (cenv : Poly_type.t) ~tvar_env ~global_env ~diagnostics =
                     raise_notrace (Resolve_failure err));
             Cache.add cache (hty, trait) Success)
   in
-  Poly_type.iter cenv ~f:(fun self_ty c ->
-      try solve self_ty c
-      with Resolve_failure err ->
-        Local_diagnostics.add_error diagnostics
-          (cannot_resolve_trait err ~loc:c.loc_))
+  Poly_type.iter cenv ~f:(fun self_ty ->
+      fun c ->
+       try solve self_ty c ~root_loc:c.loc_
+       with Resolve_failure err ->
+         Local_diagnostics.add_error diagnostics
+           (cannot_resolve_trait err ~loc:c.loc_))

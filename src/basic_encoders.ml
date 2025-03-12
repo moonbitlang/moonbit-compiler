@@ -33,76 +33,81 @@ let float32_le x = of_buffer_add Buffer.add_int32_le (Int32.bits_of_float x)
 
 let int_sleb128 x =
   of_buffer_add
-    (fun b x ->
-      let rec aux x =
-        let y = x land 0x7f in
-        if -64 <= x && x < 64 then Buffer.add_uint8 b y
-        else (
-          Buffer.add_uint8 b (y lor 0x80);
-          aux (x asr 7))
-      in
-      aux x)
+    (fun b ->
+      fun x ->
+       let rec aux x =
+         let y = x land 0x7f in
+         if -64 <= x && x < 64 then Buffer.add_uint8 b y
+         else (
+           Buffer.add_uint8 b (y lor 0x80);
+           aux (x asr 7))
+       in
+       aux x)
     x
 
 let int_uleb128 x =
   of_buffer_add
-    (fun b x ->
-      let rec aux x =
-        let y = x land 0x7f in
-        if 0 <= x && x < 128 then Buffer.add_uint8 b y
-        else (
-          Buffer.add_uint8 b (y lor 0x80);
-          aux (x lsr 7))
-      in
-      aux x)
+    (fun b ->
+      fun x ->
+       let rec aux x =
+         let y = x land 0x7f in
+         if 0 <= x && x < 128 then Buffer.add_uint8 b y
+         else (
+           Buffer.add_uint8 b (y lor 0x80);
+           aux (x lsr 7))
+       in
+       aux x)
     x
 
 let int32_sleb128 x =
   of_buffer_add
-    (fun b x ->
-      let rec aux x =
-        let y =
-          let open Int32 in
-          to_int (logand x 0x7fl)
-        in
-        if -64l <= x && x < 64l then Buffer.add_uint8 b y
-        else (
-          Buffer.add_uint8 b (y lor 0x80);
-          aux (Int32.shift_right x 7))
-      in
-      aux x)
+    (fun b ->
+      fun x ->
+       let rec aux x =
+         let y =
+           let open Int32 in
+           to_int (logand x 0x7fl)
+         in
+         if -64l <= x && x < 64l then Buffer.add_uint8 b y
+         else (
+           Buffer.add_uint8 b (y lor 0x80);
+           aux (Int32.shift_right x 7))
+       in
+       aux x)
     x
 
 let int32_uleb128 x =
   of_buffer_add
-    (fun b x ->
-      let rec aux x =
-        let y =
-          let open Int32 in
-          to_int (logand x 0x7fl)
-        in
-        if 0l <= x && x < 128l then Buffer.add_uint8 b y
-        else (
-          Buffer.add_uint8 b (y lor 0x80);
-          aux (Int32.shift_right_logical x 7))
-      in
-      aux x)
+    (fun b ->
+      fun x ->
+       let rec aux x =
+         let y =
+           let open Int32 in
+           to_int (logand x 0x7fl)
+         in
+         if 0l <= x && x < 128l then Buffer.add_uint8 b y
+         else (
+           Buffer.add_uint8 b (y lor 0x80);
+           aux (Int32.shift_right_logical x 7))
+       in
+       aux x)
     x
 
 let int64_sleb128 x =
   of_buffer_add
-    (fun b x ->
-      let rec aux x =
-        let y =
-          let open Int64 in
-          to_int (logand x 0x7fL)
-        in
-        if -64L <= x && x < 64L then Buffer.add_uint8 b y
-        else (
-          Buffer.add_uint8 b (y lor 0x80);
-          aux (Int64.shift_right x 7))
-      in
-      aux x)
+    (fun b ->
+      fun x ->
+       let rec aux x =
+         let y =
+           let open Int64 in
+           to_int (logand x 0x7fL)
+         in
+         if -64L <= x && x < 64L then Buffer.add_uint8 b y
+         else (
+           Buffer.add_uint8 b (y lor 0x80);
+           aux (Int64.shift_right x 7))
+       in
+       aux x)
     x
 
 let int_vlq64 = of_buffer_add Vlq64.buffer_add_vlq64

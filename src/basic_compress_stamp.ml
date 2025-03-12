@@ -28,41 +28,43 @@ let basename_without_stamp s =
   in
   aux ubound s
 
-let normalize ?global_stamps (impl_sexp : S.t) : S.t =
-  let tbl = Hashtbl.create 20 in
-  let rec mapper = function
-    | S.List xs -> S.List (List.map mapper xs)
-    | S.Atom s ->
-        let s =
-          match basename_without_stamp s with
-          | None -> s
-          | Local base_name -> (
-              match Hashtbl.find_opt tbl s with
-              | Some n -> n
-              | None ->
-                  let new_name =
-                    base_name ^ "/" ^ Int.to_string (Hashtbl.length tbl)
-                  in
-                  Hashtbl.add tbl s new_name;
-                  new_name)
-          | Global base_name -> (
-              match global_stamps with
-              | None ->
-                  failwith
-                    ("ident '" ^ s
-                     ^ "' occured but global_stamps is not provided"
-                      : Stdlib.String.t)
-              | Some global_stamps -> (
-                  match Hashtbl.find_opt global_stamps s with
-                  | Some n -> n
-                  | None ->
-                      let new_name =
-                        base_name ^ "|"
-                        ^ Int.to_string (Hashtbl.length global_stamps)
-                      in
-                      Hashtbl.add global_stamps s new_name;
-                      new_name))
-        in
-        S.Atom s
-  in
-  mapper impl_sexp
+let normalize ?global_stamps (impl_sexp : S.t) =
+  (let tbl = Hashtbl.create 20 in
+   let rec mapper = function
+     | S.List xs -> S.List (Basic_lst.map xs mapper)
+     | S.Atom s ->
+         let s =
+           match basename_without_stamp s with
+           | None -> s
+           | Local base_name -> (
+               match Hashtbl.find_opt tbl s with
+               | Some n -> n
+               | None ->
+                   let new_name =
+                     base_name ^ "/" ^ Int.to_string (Hashtbl.length tbl)
+                   in
+                   Hashtbl.add tbl s new_name;
+                   new_name)
+           | Global base_name -> (
+               match global_stamps with
+               | None ->
+                   failwith
+                     (("ident '" ^ s
+                       ^ "' occured but global_stamps is not provided"
+                       : Stdlib.String.t)
+                       [@merlin.hide])
+               | Some global_stamps -> (
+                   match Hashtbl.find_opt global_stamps s with
+                   | Some n -> n
+                   | None ->
+                       let new_name =
+                         base_name ^ "|"
+                         ^ Int.to_string (Hashtbl.length global_stamps)
+                       in
+                       Hashtbl.add global_stamps s new_name;
+                       new_name))
+         in
+         S.Atom s
+   in
+   mapper impl_sexp
+    : S.t)

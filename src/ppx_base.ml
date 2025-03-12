@@ -65,4 +65,4 @@ let hash_fold_list hash_fold_elem s list =
 
 let hash_fold_char s c = hash_fold_int s (Char.code c)
 let hash_fold_bool s b = hash_fold_int s (if b then 1 else 0)
-let create () : state = 0
+let create () = (0 : state)

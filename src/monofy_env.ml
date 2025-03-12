@@ -21,8 +21,8 @@ type t = {
   extension_methods : Ext_method_env.t Hash_string.t;
 }
 
-let make ~regular_methods ~extension_methods : t =
-  { regular_methods; extension_methods }
+let make ~regular_methods ~extension_methods =
+  ({ regular_methods; extension_methods } : t)
 
 let find_method_opt (env : t) ~(type_name : Method_env.type_name)
     ~(method_name : Method_env.method_name) ~(trait : Type_path.t) =

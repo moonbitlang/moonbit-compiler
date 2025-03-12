@@ -27,23 +27,24 @@ type t =
       name : string;
     }
 
-let hash_fold_t (hsv : Ppx_base.state) (t : t) : Ppx_base.state =
-  match t with
-  | Qregular { pkg; name } | Qregular_implicit_pkg { pkg; name } ->
-      let hsv = Ppx_base.hash_fold_int hsv 0 in
-      let hsv = Ppx_base.hash_fold_string hsv pkg in
-      Ppx_base.hash_fold_string hsv name
-  | Qmethod { self_typ; name } ->
-      let hsv = Ppx_base.hash_fold_int hsv 2 in
-      let hsv = Type_path.hash_fold_t hsv self_typ in
-      Ppx_base.hash_fold_string hsv name
-  | Qext_method { trait; self_typ; name } ->
-      let hsv = Ppx_base.hash_fold_int hsv 3 in
-      let hsv = Type_path.hash_fold_t hsv trait in
-      let hsv = Type_path.hash_fold_t hsv self_typ in
-      Ppx_base.hash_fold_string hsv name
+let hash_fold_t (hsv : Ppx_base.state) (t : t) =
+  (match t with
+   | Qregular { pkg; name } | Qregular_implicit_pkg { pkg; name } ->
+       let hsv = Ppx_base.hash_fold_int hsv 0 in
+       let hsv = Ppx_base.hash_fold_string hsv pkg in
+       Ppx_base.hash_fold_string hsv name
+   | Qmethod { self_typ; name } ->
+       let hsv = Ppx_base.hash_fold_int hsv 2 in
+       let hsv = Type_path.hash_fold_t hsv self_typ in
+       Ppx_base.hash_fold_string hsv name
+   | Qext_method { trait; self_typ; name } ->
+       let hsv = Ppx_base.hash_fold_int hsv 3 in
+       let hsv = Type_path.hash_fold_t hsv trait in
+       let hsv = Type_path.hash_fold_t hsv self_typ in
+       Ppx_base.hash_fold_string hsv name
+    : Ppx_base.state)
 
-let hash (t : t) = hash_fold_t (Ppx_base.create ()) t |> Ppx_base.get_hash_value
+let hash (t : t) = Ppx_base.get_hash_value (hash_fold_t (Ppx_base.create ()) t)
 
 let compare (t1 : t) (t2 : t) =
   if Basic_prelude.phys_equal t1 t2 then 0
@@ -94,8 +95,6 @@ let equal (t1 : t) (t2 : t) =
         && String.equal name1 name2
 
 let create_predef name = Qregular { pkg = "*predef*"; name }
-let op_and = Qregular { pkg = "*predef*"; name = "&&" }
-let op_or = Qregular { pkg = "*predef*"; name = "||" }
 
 let get_pkg t =
   match t with
@@ -111,16 +110,17 @@ let string_of_t t =
   | Qregular { pkg; name } | Qregular_implicit_pkg { pkg; name } ->
       if pkg = "" then name
       else if pkg = Config.builtin_package then "$builtin." ^ name
-      else Stdlib.String.concat "" [ "$"; pkg; "."; name ]
+      else Stdlib.String.concat "" [ "$"; pkg; "."; name ] [@merlin.hide]
   | Qmethod { self_typ; name } ->
       let typ_str = Type_path.short_name ~cur_pkg_name:None self_typ in
-      (typ_str ^ "::" ^ name : Stdlib.String.t)
+      ((typ_str ^ "::" ^ name : Stdlib.String.t) [@merlin.hide])
   | Qext_method { trait; self_typ; name } ->
       let trait_str = Type_path.short_name ~cur_pkg_name:None trait in
       let typ_str = Type_path.short_name ~cur_pkg_name:None self_typ in
-      Stdlib.String.concat "" [ trait_str; "::"; name; "|"; typ_str; "|" ]
+      (Stdlib.String.concat ""
+         [ trait_str; "::"; name; "|"; typ_str; "|" ] [@merlin.hide])
 
-let sexp_of_t t : S.t = S.Atom (string_of_t t)
+let sexp_of_t t = (S.Atom (string_of_t t) : S.t)
 
 let base_name t =
   match t with
@@ -149,16 +149,33 @@ let to_wasm_name t =
   match t with
   | Qregular { pkg; name } | Qregular_implicit_pkg { pkg; name } ->
       let name = Strutil.mangle_wasm_name name in
-      if pkg = "" then ("$" ^ name : Stdlib.String.t)
+      if pkg = "" then ("$" ^ name : Stdlib.String.t) [@merlin.hide]
       else
         let pkg = Strutil.mangle_wasm_name pkg in
-        Stdlib.String.concat "" [ "$"; pkg; "."; name ]
+        (Stdlib.String.concat "" [ "$"; pkg; "."; name ] [@merlin.hide])
   | Qmethod { self_typ; name } ->
       let typ_str = Strutil.mangle_wasm_name (Type_path.export_name self_typ) in
       let name = Strutil.mangle_wasm_name name in
-      Stdlib.String.concat "" [ "$"; typ_str; "::"; name ]
+      (Stdlib.String.concat "" [ "$"; typ_str; "::"; name ] [@merlin.hide])
   | Qext_method { trait; self_typ; name } ->
       let trait_str = Strutil.mangle_wasm_name (Type_path.export_name trait) in
       let typ_str = Strutil.mangle_wasm_name (Type_path.export_name self_typ) in
       let name = Strutil.mangle_wasm_name name in
-      Stdlib.String.concat "" [ "$"; trait_str; "::"; typ_str; "::"; name ]
+      (Stdlib.String.concat ""
+         [ "$"; trait_str; "::"; typ_str; "::"; name ] [@merlin.hide])
+
+let to_toplevel_id t =
+  (match t with
+   | Qregular { pkg; name } -> T_regular { pkg; name }
+   | Qmethod { self_typ; name } -> T_method { self_typ; name }
+   | Qext_method { trait; self_typ; name } ->
+       T_ext_method { trait; self_typ; name }
+   | Qregular_implicit_pkg _ -> assert false
+    : Type_path.toplevel_id)
+
+let from_toplevel_id (id : Type_path.toplevel_id) =
+  match id with
+  | T_regular { pkg; name } -> Qregular { pkg; name }
+  | T_method { self_typ; name } -> Qmethod { self_typ; name }
+  | T_ext_method { trait; self_typ; name } ->
+      Qext_method { trait; self_typ; name }

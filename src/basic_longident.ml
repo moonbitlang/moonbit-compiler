@@ -19,12 +19,13 @@ include struct
   let _ = fun (_ : qual_name) -> ()
 
   let equal_qual_name =
-    (fun a__001_ b__002_ ->
-       if Stdlib.( == ) a__001_ b__002_ then true
-       else
-         Stdlib.( && )
-           (Stdlib.( = ) (a__001_.pkg : string) b__002_.pkg)
-           (Stdlib.( = ) (a__001_.id : string) b__002_.id)
+    (fun a__001_ ->
+       fun b__002_ ->
+        if Stdlib.( == ) a__001_ b__002_ then true
+        else
+          Stdlib.( && )
+            (Stdlib.( = ) (a__001_.pkg : string) b__002_.pkg)
+            (Stdlib.( = ) (a__001_.id : string) b__002_.id)
       : qual_name -> qual_name -> bool)
 
   let _ = equal_qual_name
@@ -36,15 +37,16 @@ include struct
   let _ = fun (_ : t) -> ()
 
   let equal =
-    (fun a__003_ b__004_ ->
-       if Stdlib.( == ) a__003_ b__004_ then true
-       else
-         match (a__003_, b__004_) with
-         | Lident _a__005_, Lident _b__006_ ->
-             Stdlib.( = ) (_a__005_ : string) _b__006_
-         | Lident _, _ -> false
-         | _, Lident _ -> false
-         | Ldot _a__007_, Ldot _b__008_ -> equal_qual_name _a__007_ _b__008_
+    (fun a__003_ ->
+       fun b__004_ ->
+        if Stdlib.( == ) a__003_ b__004_ then true
+        else
+          match (a__003_, b__004_) with
+          | Lident _a__005_, Lident _b__006_ ->
+              Stdlib.( = ) (_a__005_ : string) _b__006_
+          | Lident _, _ -> false
+          | _, Lident _ -> false
+          | Ldot _a__007_, Ldot _b__008_ -> equal_qual_name _a__007_ _b__008_
       : t -> t -> bool)
 
   let _ = equal
@@ -54,4 +56,4 @@ let to_string = function
   | Lident id -> id
   | Ldot { pkg; id } -> "@" ^ pkg ^ "." ^ id
 
-let sexp_of_t (x : t) : S.t = Atom (to_string x)
+let sexp_of_t (x : t) = (Atom (to_string x) : S.t)

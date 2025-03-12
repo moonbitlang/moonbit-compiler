@@ -18,29 +18,29 @@ module Comment = Lex_comment
 
 type t = Comment.with_loc Vec.t
 
-let search ~last ~loc_ (t : Comment.with_loc Vec.t) : Comment.with_loc =
-  let line = Loc.line_number loc_ in
-  let rec go l r =
-    if l >= r then l
-    else
-      let m = l + ((r - l) / 2) in
-      let locs = Vec.get t m in
-      match locs with
-      | [] -> assert false
-      | (x, _) :: _ ->
-          if Loc.line_number x <= line then go l m else go (m + 1) r
-  in
-  let result =
-    let pos = go 0 (Vec.length t - 1) in
-    if pos >= Vec.length t then []
-    else
-      match Vec.get t pos with
-      | [] -> assert false
-      | (x, _) :: _ as xs ->
-          let lx = Loc.line_number x in
-          if Loc.line_number_end last < lx && lx <= line then xs else []
-  in
-  List.iter
-    (fun (_, (comment : Comment.t)) -> comment.consumed_by_docstring := true)
-    result;
-  result
+let search ~last ~loc_ (t : Comment.with_loc Vec.t) =
+  (let line = Loc.line_number loc_ in
+   let rec go l r =
+     if l >= r then l
+     else
+       let m = l + ((r - l) / 2) in
+       let locs = Vec.get t m in
+       match locs with
+       | [] -> assert false
+       | (x, _) :: _ ->
+           if Loc.line_number x <= line then go l m else go (m + 1) r
+   in
+   let result =
+     let pos = go 0 (Vec.length t - 1) in
+     if pos >= Vec.length t then []
+     else
+       match Vec.get t pos with
+       | [] -> assert false
+       | (x, _) :: _ as xs ->
+           let lx = Loc.line_number x in
+           if Loc.line_number_end last < lx && lx <= line then xs else []
+   in
+   Basic_lst.iter result ~f:(fun (_, (comment : Comment.t)) ->
+       comment.consumed_by_docstring := true);
+   result
+    : Comment.with_loc)

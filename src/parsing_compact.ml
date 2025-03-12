@@ -27,7 +27,7 @@ type semi_expr_prop =
   | Stmt_guard_let of {
       pat : pattern;
       expr : expr;
-      otherwise : (pattern * expr) list option;
+      otherwise : Syntax.case list option;
       loc : Rloc.t;
     }
   | Stmt_letmut of {
@@ -38,23 +38,24 @@ type semi_expr_prop =
     }
   | Stmt_func of { binder : binder; func : Syntax.func; loc : Rloc.t }
 
-let rec compact_rev (ls : semi_expr_prop list) (semi_list_loc : Rloc.t) : expr =
-  match ls with
-  | Stmt_expr { expr } :: rest -> collect_rev rest expr
-  | rest ->
-      let loc_ =
-        match rest with
-        | [] -> semi_list_loc
-        | ( Stmt_let { loc; _ }
-          | Stmt_guard { loc; _ }
-          | Stmt_guard_let { loc; _ }
-          | Stmt_letmut { loc; _ }
-          | Stmt_func { loc; _ } )
-          :: _ ->
-            loc
-        | Stmt_expr _ :: _ -> assert false
-      in
-      collect_rev rest (Syntax.Pexpr_unit { loc_; faked = true })
+let rec compact_rev (ls : semi_expr_prop list) (semi_list_loc : Rloc.t) =
+  (match ls with
+   | Stmt_expr { expr } :: rest -> collect_rev rest expr
+   | rest ->
+       let loc_ =
+         match rest with
+         | [] -> semi_list_loc
+         | ( Stmt_let { loc; _ }
+           | Stmt_guard { loc; _ }
+           | Stmt_guard_let { loc; _ }
+           | Stmt_letmut { loc; _ }
+           | Stmt_func { loc; _ } )
+           :: _ ->
+             loc
+         | Stmt_expr _ :: _ -> assert false
+       in
+       collect_rev rest (Syntax.Pexpr_unit { loc_; faked = true })
+    : expr)
 
 and collect_rev rest cont =
   match rest with
@@ -62,19 +63,11 @@ and collect_rev rest cont =
   | x :: xs -> (
       match x with
       | Stmt_func x -> collect_letrec x.loc [ (x.binder, x.func) ] xs cont
+      | Stmt_expr _ ->
+          collect_sequence (Syntax.loc_of_expression cont) [] rest cont
       | _ ->
           let acc : Syntax.expr =
             match x with
-            | Stmt_expr { expr = expr1 } ->
-                Pexpr_sequence
-                  {
-                    expr1;
-                    expr2 = cont;
-                    loc_ =
-                      Rloc.merge
-                        (Syntax.loc_of_expression expr1)
-                        (Syntax.loc_of_expression cont);
-                  }
             | Stmt_let { pat; expr; loc } ->
                 let loc_ = Rloc.merge loc (Syntax.loc_of_expression cont) in
                 Pexpr_let { pattern = pat; expr; loc_; body = cont }
@@ -87,9 +80,17 @@ and collect_rev rest cont =
             | Stmt_letmut { binder; ty_opt; expr; loc } ->
                 let loc_ = Rloc.merge loc (Syntax.loc_of_expression cont) in
                 Pexpr_letmut { binder; ty = ty_opt; expr; loc_; body = cont }
-            | Stmt_func _ -> assert false
+            | Stmt_expr _ | Stmt_func _ -> assert false
           in
           collect_rev xs acc)
+
+and collect_sequence loc_ (acc : Syntax.expr list) todo cont =
+  match todo with
+  | Stmt_expr { expr = expr1 } :: rest ->
+      let loc_ = Rloc.merge (Syntax.loc_of_expression expr1) loc_ in
+      collect_sequence loc_ (expr1 :: acc) rest cont
+  | _ ->
+      collect_rev todo (Pexpr_sequence { exprs = acc; last_expr = cont; loc_ })
 
 and collect_letrec firstloc acc todo cont =
   match todo with

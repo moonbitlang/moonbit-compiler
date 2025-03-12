@@ -28,11 +28,11 @@ let lint_typ loc outmost_typ ~diagnostics =
             in
             Local_diagnostics.add_warning diagnostics { kind = warn; loc });
         link := Tlink type_unit
-    | Tarrow { params_ty; ret_ty; err_ty } -> (
-        Lst.iter params_ty go;
+    | Tarrow { params_ty; ret_ty; err_ty; is_async = _ } -> (
+        Lst.iter params_ty ~f:go;
         go ret_ty;
         match err_ty with None -> () | Some ty -> go ty)
-    | T_constr { tys; type_constructor = _ } -> Lst.iter tys go
+    | T_constr { tys; type_constructor = _ } -> Lst.iter tys ~f:go
     | Tparam _ | T_trait _ | T_builtin _ | T_blackhole -> ()
   in
   go outmost_typ
@@ -80,7 +80,7 @@ let lint_obj =
       | Texpr_unresolved_method { self_type; loc_; _ } ->
           lint_typ ~diagnostics loc_ self_type
       | _ -> self#visit_expr diagnostics func);
-      Lst.iter args (self#visit_argument diagnostics)
+      Lst.iter args ~f:(self#visit_argument diagnostics)
 
     method! visit_Pipe_partial_apply diagnostics func args _loc =
       (match func with
@@ -91,16 +91,17 @@ let lint_obj =
       | Texpr_unresolved_method { self_type; loc_; _ } ->
           lint_typ ~diagnostics loc_ self_type
       | _ -> self#visit_expr diagnostics func);
-      Lst.iter args (self#visit_argument diagnostics)
+      Lst.iter args ~f:(self#visit_argument diagnostics)
 
     method! visit_Texpr_try diagnostics body catch _catch_all try_else ty err_ty
         _catch_loc _else_loc loc =
       self#visit_expr diagnostics body;
-      Lst.iter catch (fun case -> self#visit_match_case diagnostics case);
+      Lst.iter catch ~f:(fun case -> self#visit_match_case diagnostics case);
       (match try_else with
       | None -> ()
       | Some try_else ->
-          Lst.iter try_else (fun case -> self#visit_match_case diagnostics case));
+          Lst.iter try_else ~f:(fun case ->
+              self#visit_match_case diagnostics case));
       lint_typ ~diagnostics loc ty;
       lint_typ ~diagnostics loc err_ty
 
@@ -116,7 +117,7 @@ let type_lint (expr : Typedtree.expr) ~diagnostics =
 
 let type_lint_fn (fn : Typedtree.fn) ~diagnostics =
   type_lint fn.body ~diagnostics;
-  Lst.iter fn.params (fun (Param { kind; _ }) ->
-      match kind with
-      | Optional default -> type_lint default ~diagnostics
+  Lst.iter fn.params ~f:(fun p ->
+      match p with
+      | Param { kind = Optional default; _ } -> type_lint default ~diagnostics
       | _ -> ())

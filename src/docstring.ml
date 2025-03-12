@@ -15,6 +15,7 @@
 
 module Comment = Lex_comment
 module Strutil = Basic_strutil
+module Lst = Basic_lst
 
 type pragma_prop = Prop_string of string | Prop_atom of string
 
@@ -78,7 +79,8 @@ include struct
   let _ = fun (_ : t) -> ()
 
   let sexp_of_t =
-    (fun { comment = comment__015_; pragmas = pragmas__017_; loc = loc__019_ } ->
+    (fun { comment = comment__015_; pragmas = pragmas__017_; loc = loc__019_ }
+     ->
        let bnds__014_ = ([] : _ Stdlib.List.t) in
        let bnds__014_ =
          let arg__020_ = Loc.sexp_of_t loc__019_ in
@@ -109,8 +111,9 @@ exception Parse_error of Loc.t * string
 
 type state = { doc : string; loc : Loc.t; mutable pos : int }
 
-let peek state : char =
-  if state.pos < String.length state.doc then state.doc.[state.pos] else '\000'
+let peek state =
+  (if state.pos < String.length state.doc then state.doc.[state.pos] else '\000'
+    : char)
 
 let consume state =
   if state.pos < String.length state.doc then (
@@ -157,19 +160,20 @@ let parse_pragma_props s =
 
 let parse_pragma ~loc str =
   let s = { doc = str; loc; pos = 0 } in
-  let rec parse () : (string * pragma_prop list) option =
-    match peek s with
-    | ' ' | '\t' ->
-        skip s;
-        parse ()
-    | '@' -> (
-        skip s;
-        let pragma_name = parse_ident s in
-        let peek_s = peek s in
-        match peek_s with
-        | ' ' | '\t' | '\000' -> Some (pragma_name, parse_pragma_props s)
-        | _ -> None)
-    | _ -> None
+  let rec parse () =
+    (match peek s with
+     | ' ' | '\t' ->
+         skip s;
+         parse ()
+     | '@' -> (
+         skip s;
+         let pragma_name = parse_ident s in
+         let peek_s = peek s in
+         match peek_s with
+         | ' ' | '\t' | '\000' -> Some (pragma_name, parse_pragma_props s)
+         | _ -> None)
+     | _ -> None
+      : (string * pragma_prop list) option)
   in
   match parse () with
   | Some (id, props) -> (
@@ -195,11 +199,9 @@ let loc (t : t) = t.loc
 
 let of_comments ~diagnostics (comments : Comment.with_loc) =
   let comments =
-    List.map
-      (fun (loc, { Comment.content; _ }) ->
+    Lst.map comments (fun (loc, { Comment.content; _ }) ->
         let content = Basic_strutil.drop_while (fun c -> c = '/') content in
         (loc, content))
-      comments
   in
   let comments =
     match comments with
@@ -219,25 +221,25 @@ let of_comments ~diagnostics (comments : Comment.with_loc) =
     | (loc, _) :: _ -> Loc.get_end loc
   in
   let pragmas =
-    let rec aux (acc : 'a list) (comments : (Loc.t * string) list) : pragma list
-        =
-      match comments with
-      | [] -> acc
-      | (_, line) :: comments when Strutil.trim line = "" -> aux acc comments
-      | (loc, line) :: comments -> (
-          try
-            match parse_pragma ~loc line with
-            | None -> acc
-            | Some x -> aux (x :: acc) comments
-          with Parse_error (loc, message) ->
-            Diagnostics.add_warning diagnostics
-              { kind = Warnings.Unexpected_pragmas message; loc };
-            aux acc comments)
+    let rec aux (acc : 'a list) (comments : (Loc.t * string) list) =
+      (match comments with
+       | [] -> acc
+       | (_, line) :: comments when Strutil.trim line = "" -> aux acc comments
+       | (loc, line) :: comments -> (
+           try
+             match parse_pragma ~loc line with
+             | None -> acc
+             | Some x -> aux (x :: acc) comments
+           with Parse_error (loc, message) ->
+             Diagnostics.add_warning diagnostics
+               { kind = Warnings.Unexpected_pragmas message; loc };
+             aux acc comments)
+        : pragma list)
     in
     aux [] comments_rev
   in
   {
-    comment = List.map snd comments;
+    comment = Lst.map comments snd;
     pragmas;
     loc = Loc.of_menhir (startp, endp);
   }
@@ -245,10 +247,8 @@ let of_comments ~diagnostics (comments : Comment.with_loc) =
 let make ~pragmas ~loc docs = { comment = docs; pragmas; loc }
 
 let check_alerts ~diagnostics pragmas loc =
-  List.iter
-    (fun pragma ->
+  Basic_lst.iter pragmas ~f:(fun pragma ->
       match pragma with
       | Pragma_alert { category; message } ->
           Local_diagnostics.add_alert diagnostics { category; message; loc }
       | _ -> ())
-    pragmas

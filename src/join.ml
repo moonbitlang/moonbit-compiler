@@ -17,15 +17,16 @@ type t = int
 
 let equal = Int.equal
 
-let sexp_of_t (i : int) : S.t =
-  Atom ("$join:" ^ Int.to_string i : Stdlib.String.t)
+let sexp_of_t (i : int) =
+  (Atom ("$join:" ^ Int.to_string i : Stdlib.String.t) : S.t)
 
 let of_core_ident (id : Basic_core_ident.t) =
   match id with
   | Pident { stamp; _ } | Pmutable_ident { stamp; _ } -> stamp
-  | Pdot _ | Plocal_method _ -> assert false
+  | Pdot _ -> assert false
+  | Plocal_method _ -> assert false
 
-let to_wasm_label x : Stdlib.String.t = "$join:" ^ Int.to_string x
+let to_wasm_label x = ("$join:" ^ Int.to_string x : Stdlib.String.t)
 
 module Map = Basic_map_int
 module Hash = Basic_hash_int

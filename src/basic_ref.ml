@@ -60,11 +60,11 @@ let protect2 r1 r2 v1 v2 body =
 
 let protect_list rvs body =
   let olds = Lst.map rvs (fun (x, _) -> !x) in
-  let () = Lst.iter rvs (fun (x, y) -> x := y) in
+  let () = Lst.iter rvs ~f:(fun (x, y) -> x := y) in
   try
     let res = body () in
-    List.iter2 (fun (x, _) old -> x := old) rvs olds;
+    List.iter2 (fun (x, _) -> fun old -> x := old) rvs olds;
     res
   with e ->
-    List.iter2 (fun (x, _) old -> x := old) rvs olds;
+    List.iter2 (fun (x, _) -> fun old -> x := old) rvs olds;
     raise e

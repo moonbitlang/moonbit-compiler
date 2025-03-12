@@ -15,6 +15,7 @@
 
 module Iter_utils = Basic_iter_utils
 module Arr = Basic_arr
+module Lst = Basic_lst
 
 type method_array = Method_env.method_array
 
@@ -65,7 +66,8 @@ include struct
            methods = methods__021_;
            ext_methods = ext_methods__023_;
            pkg_name = pkg_name__025_;
-         } ->
+         }
+     ->
        let bnds__006_ = ([] : _ Stdlib.List.t) in
        let bnds__006_ =
          let arg__026_ = Moon_sexp_conv.sexp_of_string pkg_name__025_ in
@@ -135,7 +137,8 @@ include struct
            methods = methods__042_;
            ext_methods = ext_methods__044_;
            pkg_name = pkg_name__046_;
-         } ->
+         }
+     ->
        let bnds__027_ = ([] : _ Stdlib.List.t) in
        let bnds__027_ =
          let arg__047_ = Moon_sexp_conv.sexp_of_string pkg_name__046_ in
@@ -188,77 +191,89 @@ end
 let magic_str = Basic_config.core_magic_str
 
 let export (type t) ~(action : t Action.t) ~(pkg_name : string)
-    ~(program : Core.program) ~(genv : Global_env.t) : t =
-  let methods =
-    Method_env.export ~export_private:true (Global_env.get_method_env genv)
-  in
-  let ext_methods =
-    Global_env.get_ext_method_env genv
-    |> Ext_method_env.iter |> Iter_utils.to_array
-  in
-  let types = Global_env.get_toplevel_types genv |> Typing_info.get_all_types in
-  let traits =
-    Global_env.get_toplevel_types genv |> Typing_info.get_all_traits
-  in
-  let serialized : serialized =
-    { program; types; traits; pkg_name; methods; ext_methods }
-  in
-  match action with
-  | Write_file path ->
-      Out_channel.with_open_bin path (fun oc ->
-          output_string oc magic_str;
-          Marshal.to_channel oc [| serialized |] [])
-  | Return_bytes ->
-      let magic_bytes = Bytes.of_string magic_str in
-      let serialized_bytes = Marshal.to_bytes [| serialized |] [] in
-      Bytes.cat magic_bytes serialized_bytes
+    ~(program : Core.program) ~(genv : Global_env.t) =
+  (let methods =
+     Method_env.export ~export_private:true (Global_env.get_method_env genv)
+   in
+   let ext_methods =
+     Iter_utils.to_array
+       (Ext_method_env.iter (Global_env.get_ext_method_env genv))
+   in
+   let types = Typing_info.get_all_types (Global_env.get_toplevel_types genv) in
+   let local_types = Global_env.all_local_types genv in
+   let traits =
+     Typing_info.get_all_traits (Global_env.get_toplevel_types genv)
+   in
+   let serialized : serialized =
+     {
+       program;
+       types = Array.append local_types types;
+       traits;
+       pkg_name;
+       methods;
+       ext_methods;
+     }
+   in
+   match action with
+   | Write_file path ->
+       Out_channel.with_open_bin path (fun oc ->
+           output_string oc magic_str;
+           Marshal.to_channel oc [| serialized |] [])
+   | Return_bytes ->
+       let magic_bytes = Bytes.of_string magic_str in
+       let serialized_bytes = Marshal.to_bytes [| serialized |] [] in
+       Bytes.cat magic_bytes serialized_bytes
+    : t)
 
-let of_string (bin : string) : t array =
-  if String.starts_with ~prefix:magic_str bin then
-    let magic_str_len = String.length Basic_config.core_magic_str in
-    Arr.map
-      (Marshal.from_string bin magic_str_len : serialized array)
-      (fun serialized ->
-        let methods = Method_env.import serialized.methods in
-        {
-          program = serialized.program;
-          types = serialized.types;
-          traits = serialized.traits;
-          methods;
-          ext_methods = Ext_method_env.of_array serialized.ext_methods;
-          pkg_name = serialized.pkg_name;
-        })
-  else assert false
+let of_string (bin : string) =
+  (if String.starts_with ~prefix:magic_str bin then
+     let magic_str_len = String.length Basic_config.core_magic_str in
+     Arr.map
+       (Marshal.from_string bin magic_str_len : serialized array)
+       (fun serialized ->
+         let methods = Method_env.import serialized.methods in
+         {
+           program = serialized.program;
+           types = serialized.types;
+           traits = serialized.traits;
+           methods;
+           ext_methods = Ext_method_env.of_array serialized.ext_methods;
+           pkg_name = serialized.pkg_name;
+         })
+   else assert false
+    : t array)
 
-let import ~(path : string) : t array =
-  if Sys.file_exists path then
-    In_channel.with_open_bin path (fun ic ->
-        Stdlib.In_channel.input_all ic |> of_string)
-  else failwith (path ^ " not found")
+let import ~(path : string) =
+  (if Sys.file_exists path then
+     In_channel.with_open_bin path (fun ic ->
+         of_string (Stdlib.In_channel.input_all ic))
+   else failwith (path ^ " not found")
+    : t array)
 
-let dump_serialized_from_t (t : t array) : S.t =
-  let t_to_serialized (t : t) : serialized =
-    {
-      program = t.program;
-      types = t.types;
-      traits = t.traits;
-      methods = Method_env.export ~export_private:true t.methods;
-      ext_methods = t.ext_methods |> Ext_method_env.iter |> Iter_utils.to_array;
-      pkg_name = t.pkg_name;
-    }
-  in
-  Moon_sexp_conv.sexp_of_array sexp_of_serialized (Arr.map t t_to_serialized)
+let dump_serialized_from_t (t : t array) =
+  (let t_to_serialized (t : t) =
+     ({
+        program = t.program;
+        types = t.types;
+        traits = t.traits;
+        methods = Method_env.export ~export_private:true t.methods;
+        ext_methods = Iter_utils.to_array (Ext_method_env.iter t.ext_methods);
+        pkg_name = t.pkg_name;
+      }
+       : serialized)
+   in
+   Moon_sexp_conv.sexp_of_array sexp_of_serialized (Arr.map t t_to_serialized)
+    : S.t)
 
 let bundle ~inputs ~path =
   let pkgs =
-    inputs
-    |> List.map (fun path ->
+    Array.concat
+      (Lst.map inputs (fun path ->
            In_channel.with_open_bin path (fun ic ->
                match Basic_config.input_magic_str ic with
                | Some s when String.equal s magic_str ->
                    (Marshal.from_channel ic : serialized array)
-               | _ -> failwith "invalid MoonBit object file"))
-    |> Array.concat
+               | _ -> failwith "invalid MoonBit object file")))
   in
   Out_channel.with_open_bin path (fun oc ->
       output_string oc magic_str;

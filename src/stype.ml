@@ -24,8 +24,10 @@ type builtin =
   | T_byte
   | T_char
   | T_int
+  | T_int16
   | T_int64
   | T_uint
+  | T_uint16
   | T_uint64
   | T_float
   | T_double
@@ -39,13 +41,13 @@ type t =
       params_ty : t list;
       ret_ty : t;
       err_ty : t option;
+      is_async : bool;
       generic_ : bool;
     }
   | T_constr of {
       type_constructor : Type_path.t;
       tys : t list;
       generic_ : bool;
-      only_tag_enum_ : bool;
       is_suberror_ : bool;
     }
   | Tvar of tlink ref
@@ -61,9 +63,11 @@ let unit = T_builtin T_unit
 let bool = T_builtin T_bool
 let byte = T_builtin T_byte
 let char = T_builtin T_char
+let int16 = T_builtin T_int16
 let int = T_builtin T_int
 let int64 = T_builtin T_int64
 let uint = T_builtin T_uint
+let uint16 = T_builtin T_uint16
 let uint64 = T_builtin T_uint64
 let float = T_builtin T_float
 let double = T_builtin T_double
@@ -76,7 +80,6 @@ let error =
       type_constructor = Type_path.Builtin.type_path_error;
       tys = [];
       generic_ = false;
-      only_tag_enum_ = false;
       is_suberror_ = false;
     }
 
@@ -86,7 +89,6 @@ let json =
       type_constructor = Type_path.Builtin.type_path_json;
       tys = [];
       generic_ = false;
-      only_tag_enum_ = false;
       is_suberror_ = false;
     }
 
@@ -96,7 +98,6 @@ let bigint =
       type_constructor = Type_path.Builtin.type_path_bigint;
       tys = [];
       generic_ = false;
-      only_tag_enum_ = false;
       is_suberror_ = false;
     }
 
@@ -104,52 +105,58 @@ let blackhole = T_blackhole
 let tnolink_normal = Tnolink Tvar_normal
 let tnolink_error = Tnolink Tvar_error
 
-let new_type_var kind : t =
-  match kind with
-  | Tvar_normal -> Tvar (ref tnolink_normal)
-  | Tvar_error -> Tvar (ref tnolink_error)
+let new_type_var kind =
+  (match kind with
+   | Tvar_normal -> Tvar (ref tnolink_normal)
+   | Tvar_error -> Tvar (ref tnolink_error)
+    : t)
 
 let rec sexp_of_t = function
-  | Tarrow { params_ty; ret_ty; err_ty; generic_ } -> (
+  | Tarrow { params_ty; ret_ty; err_ty; is_async; generic_ } -> (
+      let async = if is_async then [ S.Atom "async" ] else [] in
       match err_ty with
       | None ->
           (List
-             (List.cons
-                (sexp_of_ts params_ty : S.t)
+             (List.append
+                (async : S.t list)
                 (List.cons
-                   (Atom "->" : S.t)
+                   (sexp_of_ts params_ty : S.t)
                    (List.cons
-                      (sexp_of_t ret_ty : S.t)
-                      ([
-                         List
-                           (List.cons
-                              (Atom "generic_" : S.t)
-                              ([ Moon_sexp_conv.sexp_of_bool generic_ ]
-                                : S.t list));
-                       ]
-                        : S.t list))))
+                      (Atom "->" : S.t)
+                      (List.cons
+                         (sexp_of_t ret_ty : S.t)
+                         ([
+                            List
+                              (List.cons
+                                 (Atom "generic_" : S.t)
+                                 ([ Moon_sexp_conv.sexp_of_bool generic_ ]
+                                   : S.t list));
+                          ]
+                           : S.t list)))))
             : S.t)
       | Some err_ty ->
           let exclamation = S.Atom "!" in
           (List
-             (List.cons
-                (sexp_of_ts params_ty : S.t)
+             (List.append
+                (async : S.t list)
                 (List.cons
-                   (Atom "->" : S.t)
+                   (sexp_of_ts params_ty : S.t)
                    (List.cons
-                      (sexp_of_t ret_ty : S.t)
+                      (Atom "->" : S.t)
                       (List.cons
-                         (exclamation : S.t)
+                         (sexp_of_t ret_ty : S.t)
                          (List.cons
-                            (sexp_of_t err_ty : S.t)
-                            ([
-                               List
-                                 (List.cons
-                                    (Atom "generic_" : S.t)
-                                    ([ Moon_sexp_conv.sexp_of_bool generic_ ]
-                                      : S.t list));
-                             ]
-                              : S.t list))))))
+                            (exclamation : S.t)
+                            (List.cons
+                               (sexp_of_t err_ty : S.t)
+                               ([
+                                  List
+                                    (List.cons
+                                       (Atom "generic_" : S.t)
+                                       ([ Moon_sexp_conv.sexp_of_bool generic_ ]
+                                         : S.t list));
+                                ]
+                                 : S.t list)))))))
             : S.t))
   | T_constr
       {
@@ -241,8 +248,10 @@ let rec sexp_of_t = function
   | T_builtin T_byte -> (Atom "Byte" : S.t)
   | T_builtin T_char -> (Atom "Char" : S.t)
   | T_builtin T_int -> (Atom "Int" : S.t)
+  | T_builtin T_int16 -> (Atom "Int16" : S.t)
   | T_builtin T_int64 -> (Atom "Int64" : S.t)
   | T_builtin T_uint -> (Atom "UInt" : S.t)
+  | T_builtin T_uint16 -> (Atom "UInt16" : S.t)
   | T_builtin T_uint64 -> (Atom "UInt64" : S.t)
   | T_builtin T_float -> (Atom "Float" : S.t)
   | T_builtin T_double -> (Atom "Double" : S.t)
@@ -261,8 +270,10 @@ let tpath_of_builtin (t : builtin) =
   | T_byte -> B.type_path_byte
   | T_char -> B.type_path_char
   | T_int -> B.type_path_int
+  | T_int16 -> B.type_path_int16
   | T_int64 -> B.type_path_int64
   | T_uint -> B.type_path_uint
+  | T_uint16 -> B.type_path_uint16
   | T_uint64 -> B.type_path_uint64
   | T_float -> B.type_path_float
   | T_double -> B.type_path_double
@@ -289,22 +300,24 @@ let is_external t =
     match p with
     | Toplevel { pkg; _ } -> pkg <> !Basic_config.current_package
     | Constr { ty; tag = _ } -> tpath_is_external ty
-    | Tuple _ | T_unit | T_bool | T_byte | T_char | T_int | T_int64 | T_uint
-    | T_uint64 | T_float | T_double | T_string | T_option | T_result
-    | T_error_value_result | T_fixedarray | T_bytes | T_ref | T_error ->
+    | Tuple _ | T_unit | T_bool | T_byte | T_char | T_int | T_int16 | T_int64
+    | T_uint | T_uint16 | T_uint64 | T_float | T_double | T_string | T_option
+    | T_result | T_error_value_result | T_fixedarray | T_bytes | T_ref | T_error
+      ->
         false
+    | T_local _ -> false
   in
   match extract_tpath t with Some p -> tpath_is_external p | None -> false
 
-let f desc : t =
-  T_constr
-    {
-      type_constructor = desc;
-      tys = [];
-      generic_ = false;
-      only_tag_enum_ = false;
-      is_suberror_ = false;
-    }
+let f desc =
+  (T_constr
+     {
+       type_constructor = desc;
+       tys = [];
+       generic_ = false;
+       is_suberror_ = false;
+     }
+    : t)
 
 let type_sourceloc = f B.type_path_sourceloc
 let type_argsloc = f B.type_path_argsloc
@@ -315,7 +328,6 @@ let type_iter_result =
       type_constructor = B.type_path_iter_result;
       tys = [];
       generic_ = false;
-      only_tag_enum_ = true;
       is_suberror_ = false;
     }
 
@@ -328,7 +340,6 @@ let make_multi_value_result_ty ~ok_ty ~err_ty =
     {
       type_constructor = Type_path.Builtin.type_path_multi_value_result;
       tys = [ ok_ty; err_ty ];
-      only_tag_enum_ = false;
       generic_ = false;
       is_suberror_ = false;
     }
@@ -338,23 +349,20 @@ let make_result_ty ~ok_ty ~err_ty =
     {
       type_constructor = Type_path.Builtin.type_path_result;
       tys = [ ok_ty; err_ty ];
-      only_tag_enum_ = false;
       generic_ = false;
       is_suberror_ = false;
     }
 
-let is_error_function (t : t) : bool =
-  match t with Tarrow { err_ty = Some _; _ } -> true | _ -> false
-
-let rec type_repr (ty : t) : t =
-  match ty with
-  | Tvar ({ contents = Tlink (Tvar ({ contents = Tlink ty } as a0)) } as a1) ->
-      let ty = type_repr ty in
-      let link = Tlink ty in
-      a0 := link;
-      a1 := link;
-      ty
-  | Tvar { contents = Tlink ty } -> ty
-  | Tarrow _ | T_constr _ | Tvar _ | Tparam _ | T_trait _ | T_builtin _
-  | T_blackhole ->
-      ty
+let rec type_repr (ty : t) =
+  (match ty with
+   | Tvar ({ contents = Tlink (Tvar ({ contents = Tlink ty } as a0)) } as a1) ->
+       let ty = type_repr ty in
+       let link = Tlink ty in
+       a0 := link;
+       a1 := link;
+       ty
+   | Tvar { contents = Tlink ty } -> ty
+   | Tarrow _ | T_constr _ | Tvar _ | Tparam _ | T_trait _ | T_builtin _
+   | T_blackhole ->
+       ty
+    : t)

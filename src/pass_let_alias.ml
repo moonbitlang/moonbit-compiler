@@ -43,7 +43,7 @@ let alias_obj =
       match Ident.Hash.find_opt context.alias_tbl func with
       | Some (Constant _) -> assert false
       | Some (Variable (v, ty_args_, prim)) ->
-          let args = List.map (self#visit_expr context) args in
+          let args = Lst.map args (self#visit_expr context) in
           Core.apply v args ~loc:loc_ ~ty_args_ ~ty:typ ~kind ~prim
       | None ->
           super#visit_Cexpr_apply context func args kind typ ty_args_ prim loc_
@@ -104,31 +104,41 @@ let remove_let_alias (prog : Core.program) =
   let alias_tbl = Ident.Hash.create 17 in
   let top_items = Vec.empty () in
   let ctx = { alias_tbl; top_items; name_hint = "" } in
-  Lst.iter prog (fun top_item ->
+  Lst.iter prog ~f:(fun top_item ->
       match top_item with
-      | Ctop_let
-          {
-            binder = Pdot _ as binder;
-            expr =
-              Cexpr_const
-                {
-                  c =
-                    (C_bool _ | C_char _ | C_int _ | C_int64 _ | C_double _) as
-                    c;
-                  _;
-                };
-            is_pub_;
-          } ->
-          Ident.Hash.add ctx.alias_tbl binder (Constant c);
-          if is_pub_ then Vec.push top_items top_item
       | Ctop_expr _ ->
           let item =
             alias_obj#visit_top_item { ctx with name_hint = "*init*" } top_item
           in
           Vec.push top_items item
       | Ctop_fn { binder; _ } | Ctop_stub { binder; _ } | Ctop_let { binder; _ }
-        ->
+        -> (
           let ctx = { ctx with name_hint = Ident.base_name binder } in
           let item = alias_obj#visit_top_item ctx top_item in
-          Vec.push top_items item);
+          match item with
+          | Ctop_let
+              {
+                binder;
+                expr = Cexpr_var { id = Pdot _ as id; ty_args_; prim; _ };
+                is_pub_;
+              } ->
+              Ident.Hash.add ctx.alias_tbl binder
+                (Variable (id, ty_args_, prim));
+              if is_pub_ then Vec.push top_items item
+          | Ctop_let
+              {
+                binder;
+                expr =
+                  Cexpr_const
+                    {
+                      c =
+                        (C_bool _ | C_char _ | C_int _ | C_int64 _ | C_double _)
+                        as c;
+                      _;
+                    };
+                is_pub_;
+              } ->
+              Ident.Hash.add ctx.alias_tbl binder (Constant c);
+              if is_pub_ then Vec.push top_items item
+          | _ -> Vec.push top_items item));
   Vec.to_list top_items

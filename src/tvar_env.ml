@@ -17,10 +17,15 @@ open Basic_unsafe_external
 module Type_path = Basic_type_path
 module Loc = Rloc
 
+type constraint_src =
+  | Super_traits of Type_path.t list
+  | Static_assert of string
+  | Direct
+
 type type_constraint = {
   trait : Type_path.t;
   loc_ : Loc.t;
-  required_by_ : Type_path.t list;
+  src_ : constraint_src;
 }
 
 let sexp_of_type_constraint { trait } = Type_path.sexp_of_t trait
@@ -53,52 +58,56 @@ let tparam_info ~name ~typ ~constraints ~loc =
   { name; typ; constraints; loc_ = loc }
 
 let empty : t = [||]
-let find_by_index_exn (env : t) (index : int) : tparam_info = env.(index)
+let find_by_index_exn (env : t) (index : int) = (env.(index) : tparam_info)
 
-let find_by_name (env : t) (name : string) : tparam_info option =
-  Arr.find env (fun tvar_info -> name = tvar_info.name)
+let find_by_name (env : t) (name : string) =
+  (Arr.find env (fun tvar_info -> name = tvar_info.name) : tparam_info option)
 
 let is_empty (x : t) = Arr.is_empty x [@@inline]
 
-let make_type_subst (tvar_env : t) : Stype.t array =
-  let len = Array.length tvar_env in
-  match len with
-  | 0 -> [||]
-  | 1 -> [| Stype.new_type_var Tvar_normal |]
-  | 2 -> [| Stype.new_type_var Tvar_normal; Stype.new_type_var Tvar_normal |]
-  | 3 ->
-      [|
-        Stype.new_type_var Tvar_normal;
-        Stype.new_type_var Tvar_normal;
-        Stype.new_type_var Tvar_normal;
-      |]
-  | 4 ->
-      [|
-        Stype.new_type_var Tvar_normal;
-        Stype.new_type_var Tvar_normal;
-        Stype.new_type_var Tvar_normal;
-        Stype.new_type_var Tvar_normal;
-      |]
-  | _ ->
-      let res : Stype.t array =
-        Array.make len (Stype.new_type_var Tvar_normal)
-      in
-      for i = 1 to len - 1 do
-        res.!(i) <- Stype.new_type_var Tvar_normal
-      done;
-      res
+let make_type_subst (tvar_env : t) =
+  (let len = Array.length tvar_env in
+   match len with
+   | 0 -> [||]
+   | 1 -> [| Stype.new_type_var Tvar_normal |]
+   | 2 -> [| Stype.new_type_var Tvar_normal; Stype.new_type_var Tvar_normal |]
+   | 3 ->
+       [|
+         Stype.new_type_var Tvar_normal;
+         Stype.new_type_var Tvar_normal;
+         Stype.new_type_var Tvar_normal;
+       |]
+   | 4 ->
+       [|
+         Stype.new_type_var Tvar_normal;
+         Stype.new_type_var Tvar_normal;
+         Stype.new_type_var Tvar_normal;
+         Stype.new_type_var Tvar_normal;
+       |]
+   | _ ->
+       let res : Stype.t array =
+         Array.make len (Stype.new_type_var Tvar_normal)
+       in
+       for i = 1 to len - 1 do
+         res.!(i) <- Stype.new_type_var Tvar_normal
+       done;
+       res
+    : Stype.t array)
 [@@inline]
 
-let to_list_map (env : t) (f : tparam_info -> 'a) : 'a list =
-  Arr.to_list_f env f
+let to_list_map (env : t) (f : tparam_info -> 'a) =
+  (Arr.to_list_f env f : 'a list)
 [@@inline]
 
-let get_types (env : t) : Stype.t list =
-  to_list_map env (fun tvar_info -> tvar_info.typ)
+let get_types (env : t) =
+  (to_list_map env (fun tvar_info -> tvar_info.typ) : Stype.t list)
 
-let iter (env : t) (f : tparam_info -> unit) : unit = Arr.iter env f
-let iteri (env : t) (f : int -> tparam_info -> unit) : unit = Array.iteri f env
-let map (env : t) (f : tparam_info -> tparam_info) : t = Arr.map env f
+let iter (env : t) (f : tparam_info -> unit) = (Arr.iter env f : unit)
+
+let iteri (env : t) (f : int -> tparam_info -> unit) =
+  (Array.iteri f env : unit)
+
+let map (env : t) (f : tparam_info -> tparam_info) = (Arr.map env f : t)
 
 let sexp_of_t env =
   S.List
@@ -110,8 +119,8 @@ let sexp_of_t env =
          in
          (List (List.cons (Atom name : S.t) (constraints : S.t list)) : S.t)))
 
-let of_list_mapi (type a) (items : a list) (f : int -> a -> tparam_info) : t =
-  Arr.of_list_mapi items f
+let of_list_mapi (type a) (items : a list) (f : int -> a -> tparam_info) =
+  (Arr.of_list_mapi items f : t)
 
 let tvar_env_1 : t =
   [|
@@ -144,5 +153,5 @@ let equal env1 env2 =
            Lst.exists tv1_constraints (constraint_equal c2))
       [@@inline]
   in
-  Arr.for_all2_no_exn env1 env2 (fun tv1 tv2 ->
-      constraints_equal tv1.constraints tv2.constraints)
+  Arr.for_all2_no_exn env1 env2 (fun tv1 ->
+      fun tv2 -> constraints_equal tv1.constraints tv2.constraints)

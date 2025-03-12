@@ -76,16 +76,20 @@ let type_not_object_safe ~name ~reasons ~loc =
         | Bad_method (method_name, First_param_not_self) ->
             ("The first parameter of method " ^ method_name ^ " is not `Self`"
               : Stdlib.String.t)
+              [@merlin.hide]
         | Bad_method (method_name, Self_in_return) ->
             ("`Self` occur in the return type of method " ^ method_name
               : Stdlib.String.t)
+              [@merlin.hide]
         | Bad_method (method_name, Multiple_self) ->
             ("`Self` occur multiple times in the type of method " ^ method_name
               : Stdlib.String.t)
+              [@merlin.hide]
         | Bad_super_trait super ->
             ("Its super trait " ^ Type_path_util.name super
              ^ " does not allow objects"
-              : Stdlib.String.t))
+              : Stdlib.String.t)
+              [@merlin.hide])
   in
   Errors.type_not_object_safe ~name ~reasons ~loc
 
@@ -186,6 +190,7 @@ type t = {
   loc_ : location;
   doc_ : docstring;
       [@default Docstring.empty] [@sexp_drop_if Docstring.is_empty]
+  attrs : Checked_attributes.t;
   object_safety_ : object_safety_status;
       [@sexp_drop_if function [] -> true | _ -> false]
 }
@@ -198,7 +203,7 @@ include struct
        | [] -> true
        | _ -> false
      and (drop_if__043_ : docstring -> Stdlib.Bool.t) = Docstring.is_empty
-     and (drop_if__048_ : object_safety_status -> Stdlib.Bool.t) = function
+     and (drop_if__050_ : object_safety_status -> Stdlib.Bool.t) = function
        | [] -> true
        | _ -> false
      in
@@ -211,15 +216,20 @@ include struct
            vis_ = vis___038_;
            loc_ = loc___040_;
            doc_ = doc___044_;
-           object_safety_ = object_safety___049_;
+           attrs = attrs__047_;
+           object_safety_ = object_safety___051_;
          } ->
        let bnds__020_ = ([] : _ Stdlib.List.t) in
        let bnds__020_ =
-         if drop_if__048_ object_safety___049_ then bnds__020_
+         if drop_if__050_ object_safety___051_ then bnds__020_
          else
-           let arg__051_ = sexp_of_object_safety_status object_safety___049_ in
-           let bnd__050_ = S.List [ S.Atom "object_safety_"; arg__051_ ] in
-           (bnd__050_ :: bnds__020_ : _ Stdlib.List.t)
+           let arg__053_ = sexp_of_object_safety_status object_safety___051_ in
+           let bnd__052_ = S.List [ S.Atom "object_safety_"; arg__053_ ] in
+           (bnd__052_ :: bnds__020_ : _ Stdlib.List.t)
+       in
+       let bnds__020_ =
+         let arg__048_ = Checked_attributes.sexp_of_t attrs__047_ in
+         (S.List [ S.Atom "attrs"; arg__048_ ] :: bnds__020_ : _ Stdlib.List.t)
        in
        let bnds__020_ =
          if drop_if__043_ doc___044_ then bnds__020_
@@ -283,58 +293,62 @@ end
 
 let get_methods_object_safety (decl : Syntax.trait_decl) =
   Lst.fold_right decl.trait_methods []
-    (fun (Trait_method { name; params; return_type; _ }) acc ->
-      match params with
-      | {
-          tmparam_typ = Ptype_name { constr_id = { lid = Lident "Self" }; _ };
-          _;
-        }
-        :: ps -> (
-          let exception Invalid_method of method_not_object_safe_reason in
-          let rec check_no_self reason (ty : Syntax.typ) =
-            match ty with
-            | Ptype_name { constr_id; tys } ->
-                (match constr_id.lid with
-                | Lident "Self" -> raise_notrace (Invalid_method reason)
-                | _ -> ());
-                List.iter (check_no_self reason) tys
-            | Ptype_tuple { tys } -> List.iter (check_no_self reason) tys
-            | Ptype_arrow { ty_arg; ty_res; ty_err } -> (
-                List.iter (check_no_self reason) ty_arg;
-                check_no_self reason ty_res;
-                match ty_err with
-                | No_error_typ | Default_error_typ _ -> ()
-                | Error_typ { ty = ty_err } -> check_no_self reason ty_err)
-            | Ptype_any _ -> ()
-            | Ptype_option { ty; _ } -> check_no_self reason ty
-          in
-          try
-            Lst.iter ps (fun p -> check_no_self Multiple_self p.tmparam_typ);
-            (match return_type with
-            | None -> ()
-            | Some (return_type, err_type) -> (
-                check_no_self Self_in_return return_type;
-                match err_type with
-                | No_error_typ | Default_error_typ _ -> ()
-                | Error_typ { ty = ty_err } ->
-                    check_no_self Self_in_return ty_err));
-            acc
-          with Invalid_method reason ->
-            Bad_method (name.binder_name, reason) :: acc)
-      | _ -> Bad_method (name.binder_name, First_param_not_self) :: acc)
+    (fun (Trait_method { name; params; return_type; _ }) ->
+      fun acc ->
+       match params with
+       | {
+           tmparam_typ = Ptype_name { constr_id = { lid = Lident "Self" }; _ };
+           _;
+         }
+         :: ps -> (
+           let exception Invalid_method of method_not_object_safe_reason in
+           let rec check_no_self reason (ty : Syntax.typ) =
+             match ty with
+             | Ptype_name { constr_id; tys } ->
+                 (match constr_id.lid with
+                 | Lident "Self" -> raise_notrace (Invalid_method reason)
+                 | _ -> ());
+                 Basic_lst.iter tys ~f:(check_no_self reason)
+             | Ptype_tuple { tys } ->
+                 Basic_lst.iter tys ~f:(check_no_self reason)
+             | Ptype_arrow { ty_arg; ty_res; ty_err; is_async } -> (
+                 assert (not is_async);
+                 Basic_lst.iter ty_arg ~f:(check_no_self reason);
+                 check_no_self reason ty_res;
+                 match ty_err with
+                 | No_error_typ | Default_error_typ _ -> ()
+                 | Error_typ { ty = ty_err } -> check_no_self reason ty_err)
+             | Ptype_any _ -> ()
+             | Ptype_option { ty; _ } -> check_no_self reason ty
+             | Ptype_object _ -> ()
+           in
+           try
+             Lst.iter ps ~f:(fun p -> check_no_self Multiple_self p.tmparam_typ);
+             (match return_type with
+             | None -> ()
+             | Some (return_type, err_type) -> (
+                 check_no_self Self_in_return return_type;
+                 match err_type with
+                 | No_error_typ | Default_error_typ _ -> ()
+                 | Error_typ { ty = ty_err } ->
+                     check_no_self Self_in_return ty_err));
+             acc
+           with Invalid_method reason ->
+             Bad_method (name.binder_name, reason) :: acc)
+       | _ -> Bad_method (name.binder_name, First_param_not_self) :: acc)
 
 let check_object_safety ~name ~loc status =
   match status with
   | [] -> None
   | reasons -> Some (type_not_object_safe ~name ~reasons ~loc)
 
-let find_method (decl : t) method_name ~loc : method_decl Local_diagnostics.info
-    =
-  match
-    Lst.find_first decl.methods (fun meth_decl ->
-        meth_decl.method_name = method_name)
-  with
-  | Some decl -> Ok decl
-  | None ->
-      Error
-        (Errors.method_not_found_in_trait ~trait:decl.name ~method_name ~loc)
+let find_method (decl : t) method_name ~loc =
+  (match
+     Lst.find_first decl.methods (fun meth_decl ->
+         meth_decl.method_name = method_name)
+   with
+   | Some decl -> Ok decl
+   | None ->
+       Error
+         (Errors.method_not_found_in_trait ~trait:decl.name ~method_name ~loc)
+    : method_decl Local_diagnostics.info)

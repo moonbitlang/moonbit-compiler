@@ -20,15 +20,15 @@ let write file content =
   output_string out content;
   close_out_noerr out
 
-let write_s file s = s |> S.to_string |> write file
+let write_s file s = write file (S.to_string s)
 
 let write_ss file (ss : S.t list) =
   match ss with
   | [] -> write file ""
   | s :: ss ->
       let out = open_out_bin file in
-      output_string out (s |> S.to_string);
-      Lst.iter ss (fun s ->
+      output_string out (S.to_string s);
+      Lst.iter ss ~f:(fun s ->
           output_string out "\n";
           output_string out (S.to_string s));
       close_out_noerr out
@@ -38,8 +38,8 @@ let write_wexps file (wexps : W.t list) =
   | [] -> write file ""
   | s :: ss ->
       let out = open_out_bin file in
-      output_string out (s |> W.to_string);
-      Lst.iter ss (fun s ->
+      output_string out (W.to_string s);
+      Lst.iter ss ~f:(fun s ->
           output_string out "\n";
           output_string out (W.to_string s));
       close_out_noerr out

@@ -13,7 +13,7 @@
 *)
 
 
-module Int_util = Basic_int_util
+module Int_util = Basic_int
 module Unsafe_external = Basic_unsafe_external
 open Unsafe_external
 
@@ -87,7 +87,7 @@ let to_sorted_array h =
   else
     let v = choose h in
     let arr = Array.make h.size v in
-    iter h (fun k _ i -> arr.!(i) <- k);
+    iter h (fun k -> fun _ -> fun i -> arr.!(i) <- k);
     arr
 
 let fold h init f =
@@ -103,7 +103,7 @@ let fold h init f =
   done;
   !accu
 
-let elements set = fold set [] (fun k _ _ acc -> k :: acc)
+let elements set = fold set [] (fun k -> fun _ -> fun _ -> fun acc -> k :: acc)
 
 let rec bucket_length acc (x : _ bucket) =
   match x with Empty -> 0 | Cons rhs -> bucket_length (acc + 1) rhs.next

@@ -13,6 +13,8 @@
 *)
 
 
+module Lst = Basic_lst
+
 exception SyntaxError of string
 
 let cut_at s (c : char) =
@@ -28,25 +30,30 @@ let cut_at s (c : char) =
     raise
       (SyntaxError
          (Stdlib.String.concat ""
-            [ "MOONC_INTERNAL_PARAMS: missing '"; Char.escaped c; "' in "; s ]))
+            [ "MOONC_INTERNAL_PARAMS: missing '"; Char.escaped c; "' in "; s ]
+          [@merlin.hide]))
 
 let parse_args params =
   if String.equal params "" then ([], [])
   else
     let before, after = cut_at params '|' in
     let before =
-      String.split_on_char ',' before
-      |> List.filter (fun s -> not (String.equal s ""))
-      |> List.map (fun kv ->
-             let k, v = cut_at kv '=' in
-             (String.trim k, String.trim v))
+      (fun args ->
+        Lst.map args (fun kv ->
+            let k, v = cut_at kv '=' in
+            (String.trim k, String.trim v)))
+        (List.filter
+           (fun s -> not (String.equal s ""))
+           (String.split_on_char ',' before))
     in
     let after =
-      String.split_on_char ',' after
-      |> List.filter (fun s -> not (String.equal s ""))
-      |> List.map (fun kv ->
-             let k, v = cut_at kv '=' in
-             (String.trim k, String.trim v))
+      (fun args ->
+        Lst.map args (fun kv ->
+            let k, v = cut_at kv '=' in
+            (String.trim k, String.trim v)))
+        (List.filter
+           (fun s -> not (String.equal s ""))
+           (String.split_on_char ',' after))
     in
     (before, after)
 
@@ -58,9 +65,17 @@ let exec_args (params : (string * string) list) =
           Driver_config.Common_Opt.wat_plain_mode := true;
         if String.equal tag "0" then
           Driver_config.Common_Opt.wat_plain_mode := false
-    | _ -> ()
+    | "dedup_wasm", tag ->
+        if String.equal tag "1" then Driver_config.Common_Opt.dedup_wasm := true;
+        if String.equal tag "0" then
+          Driver_config.Common_Opt.dedup_wasm := false
+    | option, _ ->
+        failwith
+          (("MOONC_INTERNAL_PARAMS: unknown option '" ^ option ^ "'"
+            : Stdlib.String.t)
+            [@merlin.hide])
   in
-  List.iter exec params
+  Basic_lst.iter params ~f:exec
 
 let moonc_internal_params () =
   match Sys.getenv_opt "MOONC_INTERNAL_PARAMS" with None -> "" | Some s -> s

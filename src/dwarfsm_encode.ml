@@ -13,7 +13,6 @@
 *)
 
 
-module Config = Basic_config
 module Byteseq = Basic_byteseq
 module Vec = Basic_vec
 module Hash_string = Basic_hash_string
@@ -33,16 +32,14 @@ and json_string = Basic_encoders.json_string
 
 let equal_code_pos (pc1, (pos1 : Ast.source_pos)) (pc2, (pos2 : Ast.source_pos))
     =
-  Dwarf_basic.absolute_pc_of pc1 = Dwarf_basic.absolute_pc_of pc2
+  Dwarfsm_basic.absolute_pc_of pc1 = Dwarfsm_basic.absolute_pc_of pc2
   && pos1.pkg = pos2.pkg && pos1.file = pos2.file && pos1.line = pos2.line
   && pos1.col = pos2.col
 
 let module_ ~emit_names m =
   let ctx = Encode_context.make_context () in
   Encode_resolve.resolve ctx m;
-  let wasm =
-     Encode_wasm.encode ~emit_names ctx
-  in
+  let wasm = Encode_wasm.encode ~emit_names ctx in
   Byteseq.to_string wasm
 
 let module_with_source_map ~file ?source_map_url ?source_loader m =
@@ -133,7 +130,7 @@ let module_with_source_map ~file ?source_map_url ?source_loader m =
           in
           if not !no_comma_mappings then mappings_buf ^^= string ",";
           no_comma_mappings := false;
-          let addr = codesec_offset + Dwarf_basic.absolute_pc_of rel_pc in
+          let addr = codesec_offset + Dwarfsm_basic.absolute_pc_of rel_pc in
           mappings_buf ^^= field addr last_addr
           ^^ field file_index last_src_file
           ^^ field line last_src_line

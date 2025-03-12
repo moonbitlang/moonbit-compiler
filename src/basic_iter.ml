@@ -18,11 +18,10 @@ type 'a t = ('a -> unit) -> unit
 external make : 'a t -> 'a t = "%identity"
 
 let iter ~f seq = seq f [@@inline]
-let map (seq : _ t) ~f : _ t = fun k -> seq (fun x -> k (f x)) [@@inline]
-let flat_map (seq : _ t) ~f : _ t = fun k -> seq (fun x -> f x k) [@@inline]
+let map (seq : _ t) ~f = (fun k -> seq (fun x -> k (f x)) : _ t) [@@inline]
 
-let filter_map (seq : _ t) ~f : _ t =
- fun k -> seq (fun x -> match f x with None -> () | Some y -> k y)
+let filter_map (seq : _ t) ~f =
+  (fun k -> seq (fun x -> match f x with None -> () | Some y -> k y) : _ t)
 [@@inline]
 
 exception ExitHead
@@ -38,21 +37,19 @@ let head (seq : _ t) =
 
 exception ExitTake
 
-let take n (seq : _ t) : _ t =
- fun k ->
-  let count = ref 0 in
-  try
-    seq (fun x ->
-        if !count = n then raise_notrace ExitTake;
-        incr count;
-        k x)
-  with ExitTake -> ()
+let take n (seq : _ t) =
+  (fun k ->
+     let count = ref 0 in
+     try
+       seq (fun x ->
+           if !count = n then raise_notrace ExitTake;
+           incr count;
+           k x)
+     with ExitTake -> ()
+    : _ t)
 
 let to_rev_list seq =
   let r = ref [] in
   seq (fun elt -> r := elt :: !r);
   !r
 [@@inline]
-
-let to_list seq = List.rev (to_rev_list seq)
-let of_list l : _ t = fun k -> Basic_lst.iter l k [@@inline]
