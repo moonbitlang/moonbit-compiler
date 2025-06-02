@@ -1413,6 +1413,7 @@ type instr =
   | Ref_func of funcidx
   | Ref_is_null
   | Ref_null of heaptype
+  | Ref_i31
   | Return
   | Struct_get of typeidx * fieldidx
   | Struct_new of typeidx
@@ -2114,6 +2115,8 @@ include struct
 
       method visit_Ref_is_null : _ -> instr = fun env -> Ref_is_null
 
+      method visit_Ref_i31 : _ -> instr = fun env -> Ref_i31
+
       method visit_Ref_null : _ -> heaptype -> instr =
         fun env ->
           fun _visitors_c0 ->
@@ -2460,6 +2463,7 @@ include struct
            | Ref_func _visitors_c0 -> self#visit_Ref_func env _visitors_c0
            | Ref_is_null -> self#visit_Ref_is_null env
            | Ref_null _visitors_c0 -> self#visit_Ref_null env _visitors_c0
+           | Ref_i31 -> self#visit_Ref_i31 env
            | Return -> self#visit_Return env
            | Struct_get (_visitors_c0, _visitors_c1) ->
                self#visit_Struct_get env _visitors_c0 _visitors_c1
@@ -3237,6 +3241,9 @@ include struct
               equal_heaptype _a__301_ _b__302_
           | Ref_null _, _ -> false
           | _, Ref_null _ -> false
+          | Ref_i31, Ref_i31 -> true
+          | Ref_i31, _ -> false
+          | _, Ref_i31 -> false
           | Return, Return -> true
           | Return, _ -> false
           | _, Return -> false
