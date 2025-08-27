@@ -39,11 +39,13 @@ dune build -p moonbit-lang
 
 ## 使用wasm版的MoonBit编译器
 
-首先需要安装nodejs, 然后在本仓库的根目录下执行以下命令
+首先需要安装nodejs和curl, 然后在任意的临时目录下执行以下命令
 
 ```shell
+curl -fSL -O https://github.com/moonbitlang/moonbit-compiler/releases/latest/download/moonbit-wasm.tar.gz
+tar -zxvf moonbit-wasm.tar.gz
 mkdir -p $HOME/.moon
-MOON_VERSION=$(cat ./node/moon_version)
+MOON_VERSION=$(cat ./moon_version)
 MOON_HOME="$HOME/.moon"
 BIN_DIR="$MOON_HOME/bin"
 mkdir -p "$BIN_DIR"
@@ -53,7 +55,9 @@ git reset --hard "$MOON_VERSION"
 cargo build --release
 cp target/release/moon "$BIN_DIR"
 cp target/release/moonrun "$BIN_DIR"
-pushd node
+sed -i '1 i #!/usr/bin/env -S node --stack-size=4096' moonc.js
+sed -i '1 i #!/usr/bin/env -S node --stack-size=4096' moonfmt.js
+sed -i '1 i #!/usr/bin/env -S node --stack-size=4096' mooninfo.js
 cp moonc.js moonfmt.js mooninfo.js moonc.assets moonfmt.assets mooninfo.assets "$BIN_DIR" -r
 mv "$BIN_DIR/moonc.js" "$BIN_DIR/moonc"
 mv "$BIN_DIR/moonfmt.js" "$BIN_DIR/moonfmt"
@@ -62,13 +66,11 @@ chmod +x "$BIN_DIR/moonc"
 chmod +x "$BIN_DIR/moonfmt"
 chmod +x "$BIN_DIR/mooninfo"
 cp lib include "$MOON_HOME"
-popd
-CORE_VERSION=$(cat ./node/core_version)
+CORE_VERSION=$(cat ./core_version)
 git clone https://github.com/moonbitlang/core "$MOON_HOME/lib/core"
-pushd "$MOON_HOME/lib/core"
+cd "$MOON_HOME/lib/core"
 git reset --hard "$CORE_VERSION"
 moon bundle --target all
-popd
 ```
 
 ## 贡献
