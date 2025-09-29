@@ -556,6 +556,7 @@ struct
     | Ref_func x -> byte 0xd2 ^^ funcidx x
     | Ref_is_null -> byte 0xd1
     | Ref_null t -> byte 0xd0 ^^ heaptype t
+    | Ref_i31 -> byte 0xfb1c
     | Return -> byte 0x0f
     | Struct_get (x, y) -> byte 0xfb ^^ int_uleb128 2 ^^ structandfieldidx x y
     | Struct_new x -> byte 0xfb ^^ int_uleb128 0 ^^ typeidx x

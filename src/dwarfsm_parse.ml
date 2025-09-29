@@ -838,6 +838,7 @@ let rec plaininstr : W.t list -> instr * W.t list = function
   | (Atom "ref.func" : W.t) :: (w : W.t) :: v -> (Ref_func (funcidx w), v)
   | (Atom "ref.is_null" : W.t) :: v -> (Ref_is_null, v)
   | (Atom "ref.null" : W.t) :: (w : W.t) :: v -> (Ref_null (heaptype w), v)
+  | (Atom "ref.i31" : W.t) :: v -> (Ref_i31, v)
   | (Atom "return" : W.t) :: v -> (Return, v)
   | (Atom "struct.get" : W.t) :: (w : W.t) :: (w2 : W.t) :: v ->
       (Struct_get (typeidx w, fieldidx w2), v)
