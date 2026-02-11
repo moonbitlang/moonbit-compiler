@@ -95,6 +95,12 @@ let addr_to_string = Basic_fn_address.to_wasm_name
 let add_cst = Wasmir_util.add_cst
 let add_dummy_i32 rest = add_cst 0 rest
 
+let cast_operand_type (e : Clam.lambda) =
+  match Clam_util.no_located e with
+  | Lvar { var } -> Some (Ident.get_type var)
+  | Lcast { target_type; _ } -> Some target_type
+  | _ -> None
+
 type loop_info = { params : Ident.t list; break_used : bool ref }
 
 type ctx = {
@@ -574,9 +580,16 @@ and compileExpr0 ~(tail : bool) ~ctx ~global_ctx ~type_defs (body : Clam.lambda)
        let tid_base = tid in
        generic_get var @> struct_get tid_base 0 @: generic_get var
        @> call closure_ffi_name @: rest
-   | Lcast { expr; target_type = Ref_any } -> got expr rest
-   | Lcast { expr; target_type } ->
-       gon expr (ref_cast (result target_type) @: rest)
+  | Lcast { expr; target_type = Ref_any } -> (
+      match cast_operand_type expr with
+      | Some Ref_extern -> gon expr (Ast.Extern_convert_any @: rest)
+      | _ -> got expr rest)
+  | Lcast { expr; target_type = Ref_extern } -> (
+      match cast_operand_type expr with
+      | Some Ref_any -> gon expr (Ast.Any_convert_extern @: rest)
+      | _ -> gon expr (ref_cast (result Ref_extern) @: rest))
+  | Lcast { expr; target_type } ->
+      gon expr (ref_cast (result target_type) @: rest)
    | Lcatch { body; on_exception; type_ } ->
        assert !Basic_config.test_mode;
        let body = gon body [] in

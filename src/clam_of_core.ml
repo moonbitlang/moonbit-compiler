@@ -250,14 +250,28 @@ let rec transl_expr ~name_hint ~mtype_defs ~addr_tbl ~type_defs ~object_methods
                | Ref _ | Ref_lazy_init _ | Ref_nullable _ | Ref_extern
                | Ref_string | Ref_bytes | Ref_func | Ref_any ->
                    Prefeq)
+         | Pidentity -> (
+             match[@warning "-fragile-match"] args with
+             | arg :: [] ->
+                 let source_type = transl_type (Mcore.type_of_expr arg) in
+                 let target_type = transl_type ty in
+                 if Ltype.equal source_type target_type then go arg
+                 else
+                   bind arg (fun source ->
+                       Lcast { expr = Lvar { var = source }; target_type })
+             | _ -> assert false)
          | Pcast { kind } -> (
              match[@warning "-fragile-match"] args with
              | arg :: [] -> (
                  match kind with
                  | Constr_to_enum | Make_newtype -> go arg
                  | Unfold_rec_newtype | Enum_to_constr ->
+                     let source_type = transl_type (Mcore.type_of_expr arg) in
                      let target_type = transl_type ty in
-                     Lcast { expr = go arg; target_type })
+                     if Ltype.equal source_type target_type then go arg
+                     else
+                       bind arg (fun source ->
+                           Lcast { expr = Lvar { var = source }; target_type }))
              | _ -> assert false)
          | Penum_field { index; tag = _ } -> (
              let tid =
