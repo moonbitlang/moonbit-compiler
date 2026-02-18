@@ -227,6 +227,9 @@ const main = async () => {
       "After adding it, please restart your terminal to apply the changes."
     );
   } catch (error) {
+    if (error instanceof Error) {
+      console.error(`\n${error.message}`);
+    }
     console.error('\n❌ Installation failed. Please check the error messages above.');
     exit_code = 1;
   } finally {
