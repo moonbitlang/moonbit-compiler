@@ -112,7 +112,7 @@ let make_types () =
 let init_types types traits =
   let type_decls = Hash_string.create (Array.length types * 3 / 2) in
   Array.iter (fun (name, decl) -> Hash_string.add type_decls name decl) types;
-  let trait_decls = Hash_string.create (Array.length types * 3 / 2) in
+  let trait_decls = Hash_string.create (Array.length traits * 3 / 2) in
   Array.iter (fun (name, decl) -> Hash_string.add trait_decls name decl) traits;
   { type_decls; trait_decls }
 
