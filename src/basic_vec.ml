@@ -178,7 +178,7 @@ let push (d : 'a t) v =
   else (
     if d_len = d_arr_len then (
       if d_len >= Sys.max_array_length then failwith "exceeds max_array_length";
-      let new_capacity = min Sys.max_array_length d_len * 2 in
+      let new_capacity = min Sys.max_array_length (d_len * 2) in
       let new_d_arr = Array.make new_capacity d.arr.!(0) in
       fill_with_junk_ new_d_arr 0 new_capacity;
       d.arr <- new_d_arr;
