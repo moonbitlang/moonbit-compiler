@@ -94,7 +94,7 @@ let calculate_char_paths (pats : Typedtree.pat list) ~rev =
             else
               (pat, Path.Codeunit_field { index = cu_idx; rev })
               :: go rest (cu_idx + 1) (idx + 1)
-        | _ -> (pat, normal_field idx) :: go_normal rest idx)
+        | _ -> (pat, normal_field idx) :: go_normal rest (idx + 1))
   in
   if rev then List.rev (go (List.rev pats) 0 0) else go pats 0 0
 
